@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Activity Monitor</title>
+<link rel="stylesheet" href="dashboard.css">
+</head>
+<body>
+
+<header class="bar">
+  <div class="row gap">
+    <button id="prevDay" class="btn icon" title="Previous day">&#8249;</button>
+    <span id="dayLabel" class="day-label">--</span>
+    <button id="nextDay" class="btn icon" title="Next day">&#8250;</button>
+    <button id="todayBtn" class="btn">Today</button>
+  </div>
+  <div class="row gap">
+    <div class="seg" id="bucketSel">
+      <button class="btn seg-btn" data-b="300">5m</button>
+      <button class="btn seg-btn" data-b="900">15m</button>
+      <button class="btn seg-btn is-on" data-b="3600">1h</button>
+    </div>
+    <div class="seg" id="tabs">
+      <button class="btn seg-btn is-on" data-tab="timeline">Timeline</button>
+      <button class="btn seg-btn" data-tab="rules">Rules</button>
+    </div>
+  </div>
+</header>
+
+<main>
+  <section id="view-timeline">
+    <div id="chart" class="chart"></div>
+    <div id="hours" class="hours"></div>
+
+    <div class="split">
+      <div class="pane">
+        <h2>Categories</h2>
+        <div id="totals" class="totals"></div>
+      </div>
+      <div class="pane">
+        <h2>Activities</h2>
+        <div id="labels" class="tablewrap"></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="view-rules" hidden>
+    <div class="pane">
+      <div class="row between">
+        <h2>Rules <span class="hint">first match wins</span></h2>
+        <div class="row gap">
+          <button id="addRule" class="btn">Add rule</button>
+          <button id="saveRules" class="btn primary">Save</button>
+          <span id="saveMsg" class="hint"></span>
+        </div>
+      </div>
+      <div id="rulesTable" class="tablewrap"></div>
+    </div>
+
+    <div class="pane">
+      <div class="row between">
+        <h2>Categories</h2>
+        <button id="addCat" class="btn">Add category</button>
+      </div>
+      <div id="catsTable" class="tablewrap"></div>
+    </div>
+
+    <div class="pane">
+      <h2>Raw observations <span class="hint">exactly as recorded &#183; click + to seed a rule</span></h2>
+      <div id="rawTable" class="tablewrap"></div>
+    </div>
+  </section>
+</main>
+
+<footer class="bar foot">
+  <span id="status" class="hint">&#8230;</span>
+  <span class="hint" id="lastSeen"></span>
+</footer>
+
+<div id="tip" class="tip" hidden></div>
+<script src="dashboard.js"></script>
+</body>
+</html>
