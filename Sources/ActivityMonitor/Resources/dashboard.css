@@ -1,20 +1,33 @@
 :root {
+  color-scheme: light dark;
   --bg: #ffffff;
   --panel: #f6f7f9;
   --line: #e2e5ea;
   --ink: #1b1e24;
   --dim: #6b7280;
   --accent: #3b7dd8;
+  --hover: rgba(59, 125, 216, .10);
   --radius: 6px;
+  --chart-h: 190px;
 }
 @media (prefers-color-scheme: dark) {
   :root {
     --bg: #1b1e24; --panel: #232730; --line: #333945;
     --ink: #e8eaee; --dim: #939aa8;
+    --hover: rgba(59, 125, 216, .22);
   }
 }
 
 * { box-sizing: border-box; }
+
+/* Scroll, but never render a bar. WebKit only draws overlay scrollbars when the
+   system is set to auto-hide them; otherwise it lays out a legacy bar that eats
+   width and repaints on every content change. Zero-sizing every scrollbar keeps
+   wheel/trackpad scrolling intact and the layout stable. */
+::-webkit-scrollbar { width: 0; height: 0; }
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner { background: transparent; }
+
 html, body { height: 100%; }
 body {
   margin: 0; background: var(--bg); color: var(--ink);
@@ -29,7 +42,8 @@ main { flex: 1; overflow-y: auto; padding: 12px 14px 16px; }
 .row { display: flex; align-items: center; }
 .gap { gap: 6px; }
 .between { justify-content: space-between; }
-.hint { color: var(--dim); font-size: 11px; font-weight: 400; text-transform: none; letter-spacing: 0; }
+.hint { color: var(--dim); font-size: 11px; font-weight: 400;
+        text-transform: none; letter-spacing: 0; }
 
 .bar {
   display: flex; align-items: center; justify-content: space-between;
@@ -45,7 +59,8 @@ main { flex: 1; overflow-y: auto; padding: 12px 14px 16px; }
   font-family: inherit;
 }
 .btn:hover { border-color: var(--accent); }
-.btn.icon { padding: 3px 8px; font-size: 14px; line-height: 1; }
+.btn:disabled { opacity: .4; cursor: default; border-color: var(--line); }
+.btn.icon { padding: 3px 8px; font-size: 13px; line-height: 1.15; }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
 .btn.danger:hover { border-color: #d9534f; color: #d9534f; }
 .seg { display: flex; }
@@ -54,37 +69,73 @@ main { flex: 1; overflow-y: auto; padding: 12px 14px 16px; }
 .seg .btn:last-child { border-radius: 0 var(--radius) var(--radius) 0; }
 .seg-btn.is-on { background: var(--accent); border-color: var(--accent); color: #fff; }
 
-/* timeline */
-.chart {
-  display: flex; align-items: flex-end; gap: 1px;
-  height: 190px; padding: 8px; background: var(--panel);
-  border: 1px solid var(--line); border-radius: var(--radius);
+/* ---------- timeline ---------- */
+.tl-scroll {
+  overflow-x: auto; overflow-y: hidden;
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 8px;
 }
-.col { flex: 1 1 0; min-width: 2px; height: 100%; display: flex;
-       flex-direction: column-reverse; border-radius: 2px; overflow: hidden;
-       background: transparent; cursor: default; }
-.col:hover { outline: 1px solid var(--accent); outline-offset: 1px; }
-.seg-block { width: 100%; }
-.hours { display: flex; margin: 4px 2px 14px; color: var(--dim); font-size: 10px; }
-.hours span { flex: 1 1 0; text-align: left; }
+.tl-inner { position: relative; }
 
-.split { display: grid; grid-template-columns: 1fr 1.3fr; gap: 14px; }
+.chart { display: flex; align-items: flex-end; gap: 1px; height: var(--chart-h); }
+.col { height: 100%; display: flex; flex-direction: column-reverse;
+       border-radius: 2px; overflow: hidden; cursor: pointer; }
+.col:hover { outline: 1px solid var(--accent); outline-offset: 1px; }
+.col.is-sel { outline: 2px solid var(--accent); outline-offset: 1px; }
+.chart.has-sel .col:not(.is-sel) { opacity: .45; }
+.seg-block { width: 100%; }
+
+.axis { position: relative; height: 30px; margin-top: 4px; }
+.tick { position: absolute; top: 0; width: 1px; background: var(--line); }
+.tick.hour { height: 10px; background: var(--dim); }
+.tick.half { height: 6px; }
+.tick-label {
+  position: absolute; top: 12px; font-size: 10px; color: var(--dim);
+  transform: translateX(-50%); white-space: nowrap;
+}
+.tick-label.half { color: var(--line); }
+
+.crumb { display: flex; align-items: center; gap: 6px; margin: 10px 0 0; font-size: 11px; }
+.crumb .link { background: none; border: none; color: var(--accent);
+               cursor: pointer; padding: 0; font: inherit; }
+.crumb .link:hover { text-decoration: underline; }
+.crumb .sep { color: var(--dim); }
+.crumb .cur { font-weight: 600; }
+
+/* ---------- panels ---------- */
+.split { display: grid; grid-template-columns: 4fr 8fr; gap: 14px; margin-top: 12px; }
 .pane { background: var(--panel); border: 1px solid var(--line);
-        border-radius: var(--radius); padding: 10px 12px; margin-bottom: 12px; }
+        border-radius: var(--radius); padding: 10px 12px; margin-bottom: 12px;
+        min-width: 0; }
 .totals div { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; }
-.swatch { width: 10px; height: 10px; border-radius: 2px; flex: 0 0 auto; }
+.swatch { width: 10px; height: 10px; border-radius: 2px; flex: 0 0 auto; display: inline-block; }
 .meter { flex: 1; height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; }
 .meter i { display: block; height: 100%; }
 .mono { font-variant-numeric: tabular-nums; color: var(--dim); }
 
-/* tables */
+/* ---------- tables ---------- */
 .tablewrap { max-height: 260px; overflow: auto; }
 table { width: 100%; border-collapse: collapse; }
 th { text-align: left; font-weight: 600; color: var(--dim); font-size: 10px;
      text-transform: uppercase; letter-spacing: .05em; padding: 3px 6px;
-     position: sticky; top: 0; background: var(--panel); }
-td { padding: 3px 6px; border-top: 1px solid var(--line); vertical-align: middle; }
+     position: sticky; top: 0; background: var(--panel); z-index: 1; }
+td { padding: 4px 6px; border-top: 1px solid var(--line); vertical-align: top; }
 td.num { text-align: right; font-variant-numeric: tabular-nums; color: var(--dim); }
+tbody tr:hover { background: var(--hover); }
+
+/* Activities: fixed layout so the title column absorbs the leftover width and
+   the numeric columns stay as narrow as their content actually needs. */
+table.activities { table-layout: fixed; }
+.activities .c-sw { width: 20px; }
+.activities .c-title { width: auto; }
+.activities .c-time { width: 52px; }
+.activities .c-cnt  { width: 28px; }
+.activities td.title {
+  white-space: normal; overflow-wrap: anywhere;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
 .truncate { max-width: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 input[type=text], select {
   width: 100%; background: var(--bg); color: var(--ink);

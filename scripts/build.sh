@@ -1,15 +1,31 @@
 #!/bin/bash
 # Builds ActivityMonitor.app. Run with: bash scripts/build.sh
 #
-# Signing: ad-hoc by default, which works but makes macOS forget the
-# Accessibility grant on every rebuild. Run scripts/make-signing-cert.sh once,
-# then export AM_SIGN_IDENTITY="Activity Monitor Dev" to keep the grant.
+# Signing: uses the "Activity Monitor Dev" certificate when it exists, else
+# ad-hoc. Ad-hoc works, but its identity is the bundle's own hash, so every
+# rebuild looks like a different app and macOS drops the Accessibility grant.
+# Run scripts/make-signing-cert.sh once to stop that; AM_SIGN_IDENTITY overrides.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 APP="build/ActivityMonitor.app"
 BUNDLE_ID="com.topherhunt.activitymonitor"
-IDENTITY="${AM_SIGN_IDENTITY:--}"
+CERT="${AM_SIGN_IDENTITY:-Activity Monitor Dev}"
+
+# Sign by certificate fingerprint, not by name: running make-signing-cert.sh
+# twice leaves two identities with the same common name and codesign refuses an
+# ambiguous match. Lowest fingerprint wins so the choice is stable across builds
+# -- which is what the Accessibility grant is pinned to.
+IDENTITY="$(security find-identity -v -p codesigning 2>/dev/null \
+  | awk -F'"' -v n="$CERT" '$2 == n { print $1 }' \
+  | awk '{ print $2 }' | sort | head -1)"
+
+if [ -z "$IDENTITY" ]; then
+  IDENTITY="-"
+  echo "!! no '$CERT' certificate found; signing ad-hoc."
+  echo "!! the Accessibility grant will be dropped on every rebuild."
+  echo "!! run 'bash scripts/make-signing-cert.sh' once to fix that."
+fi
 
 echo "==> swift build"
 swift build -c release

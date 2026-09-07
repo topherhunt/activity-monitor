@@ -107,6 +107,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func handle(command: String, args: [String: Any]) -> String {
         switch command {
         case "getDay":     return json(getDay(args))
+        case "getRange":   return json(getRange(args))
         case "getRaw":     return json(getRaw(args))
         case "getRules":   return jsonRules()
         case "setRules":   return setRules(args)
@@ -152,14 +153,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return Int(Calendar.current.startOfDay(for: Date()).timeIntervalSince1970)
     }
 
-    private func getDay(_ args: [String: Any]) -> [String: Any] {
-        let start = dayStart(args)
-        let end = start + 86_400
-        let roll = max(Store.bucketSeconds, (args["bucketSeconds"] as? Int) ?? Store.bucketSeconds)
-        let engine = RuleEngine(RuleStore.load(at: rulesURL))
-        let rows = store.rows(from: start, to: end)
-
-        var perBucket: [Int: [String: Int]] = [:]        // bucket -> category -> seconds
+    /// Category totals and collapsed activity rows for an arbitrary span. Backs
+    /// both the whole-day view and the drill-down when a bucket is selected.
+    private func summarize(rows: [TallyRow], engine: RuleEngine) -> [String: Any] {
         var totals: [String: Int] = [:]
         var labelTotals: [String: (category: String, seconds: Int, switches: Int)] = [:]
         var colors: [String: String] = [:]
@@ -167,8 +163,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         for row in rows {
             let r = engine.resolve(bundleID: row.bundleID, appName: row.appName,
                                    title: row.title, url: row.url)
-            let bucket = (row.bucketStart / roll) * roll
-            perBucket[bucket, default: [:]][r.category, default: 0] += row.seconds
             totals[r.category, default: 0] += row.seconds
             colors[r.category] = r.color
             var entry = labelTotals[r.label] ?? (r.category, 0, 0)
@@ -178,6 +172,41 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             labelTotals[r.label] = entry
         }
 
+        return [
+            "totals": totals.sorted { $0.value > $1.value }.map {
+                ["category": $0.key, "seconds": $0.value, "color": colors[$0.key] ?? "#6b7280"] as [String: Any]
+            },
+            "labels": labelTotals.sorted { $0.value.seconds > $1.value.seconds }.prefix(120).map {
+                ["label": $0.key, "category": $0.value.category, "seconds": $0.value.seconds,
+                 "switches": $0.value.switches,
+                 "color": colors[$0.value.category] ?? "#6b7280"] as [String: Any]
+            },
+        ]
+    }
+
+    private func getRange(_ args: [String: Any]) -> [String: Any] {
+        let from = (args["from"] as? Int) ?? dayStart(args)
+        let to = (args["to"] as? Int) ?? (from + Store.bucketSeconds)
+        let engine = RuleEngine(RuleStore.load(at: rulesURL))
+        return summarize(rows: store.rows(from: from, to: to), engine: engine)
+    }
+
+    private func getDay(_ args: [String: Any]) -> [String: Any] {
+        let start = dayStart(args)
+        let end = start + 86_400
+        let roll = max(Store.bucketSeconds, (args["bucketSeconds"] as? Int) ?? Store.bucketSeconds)
+        let engine = RuleEngine(RuleStore.load(at: rulesURL))
+        let rows = store.rows(from: start, to: end)
+
+        var perBucket: [Int: [String: Int]] = [:]        // bucket -> category -> seconds
+        var colors: [String: String] = [:]
+        for row in rows {
+            let r = engine.resolve(bundleID: row.bundleID, appName: row.appName,
+                                   title: row.title, url: row.url)
+            perBucket[(row.bucketStart / roll) * roll, default: [:]][r.category, default: 0] += row.seconds
+            colors[r.category] = r.color
+        }
+
         let buckets: [[String: Any]] = perBucket.keys.sorted().map { b in
             let cats = perBucket[b]!.sorted { $0.value > $1.value }.map {
                 ["c": $0.key, "s": $0.value, "color": colors[$0.key] ?? "#6b7280"] as [String: Any]
@@ -185,20 +214,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return ["start": b, "total": perBucket[b]!.values.reduce(0, +), "cats": cats]
         }
 
-        return [
+        var out: [String: Any] = [
             "dayStart": start,
             "bucketSeconds": roll,
             "buckets": buckets,
-            "totals": totals.sorted { $0.value > $1.value }.map {
-                ["category": $0.key, "seconds": $0.value, "color": colors[$0.key] ?? "#6b7280"] as [String: Any]
-            },
-            "labels": labelTotals.sorted { $0.value.seconds > $1.value.seconds }.prefix(80).map {
-                ["label": $0.key, "category": $0.value.category, "seconds": $0.value.seconds,
-                 "switches": $0.value.switches,
-                 "color": colors[$0.value.category] ?? "#6b7280"] as [String: Any]
-            },
             "days": store.daysWithData(),
         ]
+        summarize(rows: rows, engine: engine).forEach { out[$0.key] = $0.value }
+        return out
     }
 
     /// Raw, unresolved rows -- the view you need in order to write a rule.

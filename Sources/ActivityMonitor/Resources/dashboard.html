@@ -20,6 +20,10 @@
       <button class="btn seg-btn" data-b="900">15m</button>
       <button class="btn seg-btn is-on" data-b="3600">1h</button>
     </div>
+    <div class="seg">
+      <button id="zoomOut" class="btn icon" title="Zoom out">&#8722;</button>
+      <button id="zoomIn" class="btn icon" title="Zoom in">&#43;</button>
+    </div>
     <div class="seg" id="tabs">
       <button class="btn seg-btn is-on" data-tab="timeline">Timeline</button>
       <button class="btn seg-btn" data-tab="rules">Rules</button>
@@ -29,8 +33,14 @@
 
 <main>
   <section id="view-timeline">
-    <div id="chart" class="chart"></div>
-    <div id="hours" class="hours"></div>
+    <div class="tl-scroll" id="tlScroll">
+      <div class="tl-inner" id="tlInner">
+        <div id="chart" class="chart"></div>
+        <div id="axis" class="axis"></div>
+      </div>
+    </div>
+
+    <nav id="crumb" class="crumb" hidden></nav>
 
     <div class="split">
       <div class="pane">
