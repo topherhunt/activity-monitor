@@ -13,6 +13,11 @@ const el = (tag, props = {}, kids = []) => {
 const MIN = 60;         // seconds per timeline slice
 const ZOOM_STEP = 1.6;
 const ZOOM_MAX = 40;
+const ICON_PX = 16;
+// An icon may overhang its own stretch by up to 40% and still read correctly,
+// so a stretch only has to be this wide to earn one.
+const ICON_MIN_RUN = ICON_PX * 0.6;
+const MIN_PITCH = 2;       // px per minute at the default zoom; the day scrolls
 
 const state = {
   view: 'timeline',
@@ -20,7 +25,8 @@ const state = {
   minuteAct: null,      // Map of minute -> activity index, built lazily for hover
   group: 'day',         // list view: one group for the day, or one per hour
   bucketSeconds: 3600,
-  zoom: 1,              // 1 = whole span fits the panel
+  zoom: 1,              // 1 = MIN_PITCH per minute
+  zoomMin: 1,           // the zoom at which the whole span fits, set by renderChart
   selected: null,       // bucket start when drilled in, else null
   first: 0,             // epoch of the leftmost column, set by renderChart
   pitch: 0,             // px per bucket, set by renderChart
@@ -66,6 +72,9 @@ async function loadDay() {
   state.minuteAct = null;
   $('#dayLabel').textContent = dayName(state.day);
   renderChart();
+  // The strip is wider than the panel by default, so start at the newest end.
+  const sc = $('#tlScroll');
+  sc.scrollLeft = sc.scrollWidth;
   renderBreakdown();
 }
 
@@ -160,7 +169,14 @@ function renderChart() {
   }
 
   const avail = $('#tlScroll').clientWidth - 16;            // minus container padding
-  const pitch = Math.max(avail / sp.count, 0.1) * state.zoom;
+  // The default is MIN_PITCH, not whatever fits: a day squeezed into the window
+  // is unreadable, and the hours you care about are the recent ones. Zooming out
+  // still reaches the whole-day fit, which is what zoomMin encodes.
+  const fit = Math.max(avail / sp.count, 0.1);
+  const base = Math.max(fit, MIN_PITCH);
+  state.zoomMin = Math.min(1, fit / base);
+  state.zoom = Math.max(state.zoomMin, state.zoom);
+  const pitch = base * state.zoom;
   const totalW = sp.count * pitch;
   state.first = sp.first;
   state.pitch = pitch;
@@ -183,6 +199,8 @@ function renderChart() {
     ctx.fillRect(((t - sp.first) / MIN) * pitch, 0, pitch + 0.5, h);
   }
 
+  drawIcons(ctx, sp, pitch, h);
+
   if (state.selected !== null) {
     const x0 = ((state.selected - sp.first) / MIN) * pitch;
     const x1 = x0 + (state.bucketSeconds / MIN) * pitch;
@@ -196,6 +214,48 @@ function renderChart() {
 
   renderAxis(sp, pitch);
   syncZoomButtons();
+}
+
+const iconImgs = new Map();   // bundle id -> HTMLImageElement
+
+/// Icons come down as data URIs but still decode asynchronously, so the draw
+/// that starts a decode schedules its own repaint for when the image is ready.
+function iconFor(bid) {
+  if (iconImgs.has(bid)) return iconImgs.get(bid);
+  const src = state.data.icons && state.data.icons[bid];
+  if (!src) return null;
+  const img = new Image();
+  img.onload = () => renderChart();
+  img.src = src;
+  iconImgs.set(bid, img);
+  return img;
+}
+
+/// One icon per unbroken stretch of the same app, centred in it and allowed to
+/// overhang. Icons are skipped where one would collide with the last one drawn,
+/// which is what keeps a burst of app-switching from turning into a pile.
+function drawIcons(ctx, sp, pitch, h) {
+  const { minutes, actBundles } = state.data;
+  const y = Math.round((h - ICON_PX) / 2);
+  let lastRight = -Infinity;
+  let i = 0;
+  while (i < minutes.length) {
+    const bid = actBundles[minutes[i][1]];
+    let j = i + 1;
+    while (j < minutes.length && actBundles[minutes[j][1]] === bid
+           && minutes[j][0] === minutes[j - 1][0] + MIN) j++;
+
+    const w = (j - i) * pitch;
+    const img = w >= ICON_MIN_RUN ? iconFor(bid) : null;
+    if (img && img.complete && img.naturalWidth) {
+      const x = Math.round(((minutes[i][0] - sp.first) / MIN) * pitch + (w - ICON_PX) / 2);
+      if (x >= lastRight + 2) {
+        ctx.drawImage(img, x, y, ICON_PX, ICON_PX);
+        lastRight = x + ICON_PX;
+      }
+    }
+    i = j;
+  }
 }
 
 /// Ticks land on real clock hours (and half hours once there is room), never on
@@ -229,7 +289,7 @@ function renderAxis(sp, pitch) {
 }
 
 function syncZoomButtons() {
-  $('#zoomOut').disabled = state.zoom <= 1;
+  $('#zoomOut').disabled = state.zoom <= state.zoomMin + 1e-9;
   $('#zoomIn').disabled = state.zoom >= ZOOM_MAX;
 }
 
@@ -533,7 +593,7 @@ function zoomBy(factor) {
   if (!state.pitch) return;
   const anchor = state.first + ((sc.scrollLeft + sc.clientWidth) / state.pitch) * MIN;
 
-  state.zoom = Math.min(ZOOM_MAX, Math.max(1, state.zoom * factor));
+  state.zoom = Math.min(ZOOM_MAX, Math.max(state.zoomMin, state.zoom * factor));
   renderChart();
 
   sc.scrollLeft = ((anchor - state.first) / MIN) * state.pitch - sc.clientWidth;

@@ -76,8 +76,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         dashboardWindow.minSize = NSSize(width: 620, height: 380)
         // Closing must not destroy the window; the status item reopens this one.
         dashboardWindow.isReleasedWhenClosed = false
+        // Only the size is worth remembering; the origin is recomputed on show.
         dashboardWindow.setFrameAutosaveName("DashboardWindow")
-        if dashboardWindow.frame.origin == .zero { dashboardWindow.center() }
+    }
+
+    /// Parks the window under the top-right of the screen whose menu bar was
+    /// clicked, so it always opens where the status item is.
+    private func positionTopRight(near button: NSView) {
+        guard let area = (button.window?.screen ?? NSScreen.main)?.visibleFrame else { return }
+        var frame = dashboardWindow.frame
+        frame.size.width = min(frame.width, area.width - 24)
+        frame.size.height = min(frame.height, area.height - 12)
+        frame.origin = NSPoint(x: area.maxX - frame.width - 12, y: area.maxY - frame.height)
+        dashboardWindow.setFrame(frame, display: false)
     }
 
     @objc private func statusItemClicked(_ sender: NSStatusBarButton) {
@@ -102,10 +113,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let index = resourceDir.appendingPathComponent("dashboard.html")
         webView.loadFileURL(index, allowingReadAccessTo: resourceDir)
+        positionTopRight(near: sender)
         // An accessory app is never the active app, so ordering the window front
         // is not enough to give it keyboard focus.
         NSApp.activate(ignoringOtherApps: true)
         dashboardWindow.makeKeyAndOrderFront(nil)
+        // makeKeyAndOrderFront only raises within the active app, and macOS may
+        // decline to activate us at all; this raises above the app that kept focus.
+        dashboardWindow.orderFrontRegardless()
     }
 
     @objc private func revealData() {
@@ -226,7 +241,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         var perMinute: [Int: [String: Int]] = [:]        // minute -> label -> seconds
         var labelCat: [String: String] = [:]
-        var labelApps: [String: [String: Int]] = [:]     // label -> app -> seconds
+        var labelApps: [String: [String: Int]] = [:]     // label -> bundle id -> seconds
+        var appNames: [String: String] = [:]             // bundle id -> app name
         var colors: [String: String] = [:]
         for row in rows {
             let r = engine.resolve(bundleID: row.bundleID, appName: row.appName,
@@ -234,7 +250,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let minute = (row.bucketStart / 60) * 60
             perMinute[minute, default: [:]][r.label, default: 0] += row.seconds
             labelCat[r.label] = r.category
-            labelApps[r.label, default: [:]][row.appName, default: 0] += row.seconds
+            labelApps[r.label, default: [:]][row.bundleID, default: 0] += row.seconds
+            appNames[row.bundleID] = row.appName
             colors[r.category] = r.color
         }
 
@@ -244,6 +261,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         var acts: [String] = []
         var actCats: [String] = []
         var actApps: [String] = []
+        var actBundles: [String] = []
+        var icons: [String: String] = [:]
         var minutes: [[Int]] = []
         for minute in perMinute.keys.sorted() {
             guard let winner = perMinute[minute]!.max(by: {
@@ -256,7 +275,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 actCats.append(labelCat[winner] ?? "Uncategorized")
                 // A rule can collapse several apps into one label; name the app
                 // that actually contributed most of the label's time.
-                actApps.append(labelApps[winner]?.max { $0.value < $1.value }?.key ?? "")
+                let bundleID = labelApps[winner]?.max { $0.value < $1.value }?.key ?? ""
+                actApps.append(appNames[bundleID] ?? "")
+                actBundles.append(bundleID)
+                if icons[bundleID] == nil, let uri = iconDataURI(bundleID: bundleID) {
+                    icons[bundleID] = uri
+                }
             }
             minutes.append([minute, actIndex[winner]!])
         }
@@ -268,6 +292,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             "acts": acts,
             "actCats": actCats,
             "actApps": actApps,
+            "actBundles": actBundles,
+            "icons": icons,
             "palette": colors,
             "days": store.daysWithData(),
         ]
@@ -332,6 +358,39 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             },
             "days": store.daysWithData(),
         ]
+    }
+
+    /// Bundle id -> 32px PNG data URI, or "" for apps that have no resolvable
+    /// icon (uninstalled since, or the Idle/Locked pseudo-apps). Cached for the
+    /// process lifetime because looking an icon up hits the filesystem.
+    private var iconCache: [String: String] = [:]
+
+    private func iconDataURI(bundleID: String) -> String? {
+        if let hit = iconCache[bundleID] { return hit.isEmpty ? nil : hit }
+
+        var uri = ""
+        defer { iconCache[bundleID] = uri }
+        guard !bundleID.isEmpty,
+              let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID)
+        else { return nil }
+
+        // Draw into a fixed 32px bitmap rather than asking the NSImage for its
+        // TIFF: an .icns carries every size up to 1024 and we would embed that.
+        let side = 32
+        guard let rep = NSBitmapImageRep(
+            bitmapDataPlanes: nil, pixelsWide: side, pixelsHigh: side,
+            bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+            colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0) else { return nil }
+
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+        NSWorkspace.shared.icon(forFile: appURL.path)
+            .draw(in: NSRect(x: 0, y: 0, width: side, height: side))
+        NSGraphicsContext.restoreGraphicsState()
+
+        guard let png = rep.representation(using: .png, properties: [:]) else { return nil }
+        uri = "data:image/png;base64,\(png.base64EncodedString())"
+        return uri
     }
 
     /// Raw, unresolved rows -- the view you need in order to write a rule.
