@@ -108,6 +108,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         switch command {
         case "getDay":     return json(getDay(args))
         case "getRange":   return json(getRange(args))
+        case "getList":    return json(getList(args))
         case "getRaw":     return json(getRaw(args))
         case "getRules":   return jsonRules()
         case "setRules":   return setRules(args)
@@ -153,9 +154,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return Int(Calendar.current.startOfDay(for: Date()).timeIntervalSince1970)
     }
 
+    /// Activities below this are noise -- a glance at a window on the way to
+    /// somewhere else -- and are rolled into a single "hidden" line instead.
+    static let minReportedSeconds = 300
+
     /// Category totals and collapsed activity rows for an arbitrary span. Backs
     /// both the whole-day view and the drill-down when a bucket is selected.
-    private func summarize(rows: [TallyRow], engine: RuleEngine) -> [String: Any] {
+    /// `minSeconds` drops short activities; the drill-down passes 0 because you
+    /// went there to see detail.
+    private func summarize(rows: [TallyRow], engine: RuleEngine,
+                           minSeconds: Int = 0) -> [String: Any] {
         var totals: [String: Int] = [:]
         var labelTotals: [String: (category: String, seconds: Int, switches: Int)] = [:]
         var colors: [String: String] = [:]
@@ -172,15 +180,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             labelTotals[r.label] = entry
         }
 
+        let ranked = labelTotals.sorted { $0.value.seconds > $1.value.seconds }
+        let kept = ranked.filter { $0.value.seconds >= minSeconds }
+        let dropped = ranked.filter { $0.value.seconds < minSeconds }
+
         return [
             "totals": totals.sorted { $0.value > $1.value }.map {
                 ["category": $0.key, "seconds": $0.value, "color": colors[$0.key] ?? "#6b7280"] as [String: Any]
             },
-            "labels": labelTotals.sorted { $0.value.seconds > $1.value.seconds }.prefix(120).map {
+            "labels": kept.prefix(120).map {
                 ["label": $0.key, "category": $0.value.category, "seconds": $0.value.seconds,
                  "switches": $0.value.switches,
                  "color": colors[$0.value.category] ?? "#6b7280"] as [String: Any]
             },
+            "hidden": ["count": dropped.count,
+                       "seconds": dropped.reduce(0) { $0 + $1.value.seconds }],
         ]
     }
 
@@ -220,8 +234,67 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             "buckets": buckets,
             "days": store.daysWithData(),
         ]
-        summarize(rows: rows, engine: engine).forEach { out[$0.key] = $0.value }
+        summarize(rows: rows, engine: engine, minSeconds: Self.minReportedSeconds)
+            .forEach { out[$0.key] = $0.value }
         return out
+    }
+
+    /// One row per distinct activity label, carrying when that label was first
+    /// seen. `group` is "day" (one group for the whole day) or "hour".
+    private func getList(_ args: [String: Any]) -> [String: Any] {
+        let start = dayStart(args)
+        let end = start + 86_400
+        let byHour = (args["group"] as? String) == "hour"
+        let engine = RuleEngine(RuleStore.load(at: rulesURL))
+
+        struct Entry {
+            let group: Int, category: String, label: String, color: String, firstSeen: Int
+            var seconds = 0, switches = 0
+        }
+        var entries: [String: Entry] = [:]
+        var order: [String] = []                     // first-seen order, ascending
+
+        // store.rows() is ordered by bucket_start, so the first time a key is
+        // created is by definition the first time that activity was observed.
+        for row in store.rows(from: start, to: end) {
+            let r = engine.resolve(bundleID: row.bundleID, appName: row.appName,
+                                   title: row.title, url: row.url)
+            let group = byHour ? (row.bucketStart / 3600) * 3600 : start
+            let key = "\(group)\u{1}\(r.label)"
+            if entries[key] == nil {
+                entries[key] = Entry(group: group, category: r.category, label: r.label,
+                                     color: r.color, firstSeen: row.bucketStart)
+                order.append(key)
+            }
+            entries[key]!.seconds += row.seconds
+            entries[key]!.switches += row.switches
+        }
+
+        var rows: [[String: Any]] = []
+        var hidden: [Int: (count: Int, seconds: Int)] = [:]
+        for key in order {
+            let e = entries[key]!
+            guard e.seconds >= Self.minReportedSeconds else {
+                var h = hidden[e.group] ?? (0, 0)
+                h.count += 1
+                h.seconds += e.seconds
+                hidden[e.group] = h
+                continue
+            }
+            rows.append(["group": e.group, "start": e.firstSeen, "label": e.label,
+                         "category": e.category, "color": e.color,
+                         "seconds": e.seconds, "switches": e.switches])
+        }
+
+        return [
+            "dayStart": start,
+            "group": byHour ? "hour" : "day",
+            "rows": rows,
+            "hidden": hidden.keys.sorted().map {
+                ["group": $0, "count": hidden[$0]!.count, "seconds": hidden[$0]!.seconds]
+            },
+            "days": store.daysWithData(),
+        ]
     }
 
     /// Raw, unresolved rows -- the view you need in order to write a rule.

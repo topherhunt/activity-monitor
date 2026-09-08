@@ -15,12 +15,17 @@ const ZOOM_STEP = 1.6;
 const ZOOM_MAX = 40;
 
 const state = {
+  view: 'list',
   day: null,
+  group: 'day',         // list view: one group for the day, or one per hour
   bucketSeconds: 3600,
   zoom: 1,              // 1 = whole span fits the panel
   selected: null,       // bucket start when drilled in, else null
+  first: 0,             // epoch of the leftmost column, set by renderChart
+  pitch: 0,             // px per bucket, set by renderChart
   rules: null,
   data: null,
+  list: null,
 };
 
 function hms(sec) {
@@ -34,7 +39,24 @@ const clock = (epoch, withMinutes = true) =>
   new Date(epoch * 1000).toLocaleTimeString(undefined,
     withMinutes ? { hour: 'numeric', minute: '2-digit' } : { hour: 'numeric' });
 
+const minutes = (sec) => `${Math.round(sec / 60)}m`;
+
 // ---------- day load ----------
+
+/// Every view is scoped to state.day, so day navigation just reloads whichever
+/// one is on screen.
+async function refresh() {
+  if (state.view === 'list') return loadList();
+  if (state.view === 'timeline') return loadDay();
+  return renderRaw();
+}
+
+async function loadList() {
+  state.list = await call('getList', { day: state.day, group: state.group });
+  state.day = state.list.dayStart;
+  $('#dayLabel').textContent = dayName(state.day);
+  renderList();
+}
 
 async function loadDay() {
   state.data = await call('getDay', { day: state.day, bucketSeconds: state.bucketSeconds });
@@ -43,6 +65,71 @@ async function loadDay() {
   $('#dayLabel').textContent = dayName(state.day);
   renderChart();
   renderBreakdown();
+}
+
+// ---------- list view ----------
+
+function renderList() {
+  const host = $('#listTable');
+  const { rows, group, hidden } = state.list;
+  if (!rows.length) {
+    host.replaceChildren(el('div', { className: 'empty', textContent: 'Nothing recorded this day.' }));
+    return;
+  }
+
+  // The backend emits rows in first-seen order; reversing puts the most recent
+  // activity at the top so the day reads backwards as you scroll down.
+  const byGroup = new Map();
+  for (const r of [...rows].reverse()) {
+    if (!byGroup.has(r.group)) byGroup.set(r.group, []);
+    byGroup.get(r.group).push(r);
+  }
+  const hiddenBy = new Map(hidden.map((h) => [h.group, h]));
+
+  const body = el('tbody');
+  for (const [g, list] of byGroup) {
+    if (group === 'hour') {
+      const total = list.reduce((a, r) => a + r.seconds, 0);
+      body.append(el('tr', { className: 'group' }, [
+        el('td', { colSpan: 3, textContent: `${clock(g)} – ${clock(g + 3600)}` }),
+        el('td', { className: 'num mono', textContent: minutes(total) }),
+        el('td', {}),
+      ]));
+    }
+    for (const r of list) {
+      body.append(el('tr', {}, [
+        el('td', { className: 'cat', title: r.category }, [
+          el('span', { className: 'swatch', style: `background:${r.color}` }),
+          el('span', { textContent: ` ${r.category}` }),
+        ]),
+        el('td', { className: 'title', title: r.label, textContent: r.label }),
+        el('td', { className: 'num', textContent: clock(r.start) }),
+        el('td', { className: 'num', textContent: minutes(r.seconds) }),
+        el('td', { className: 'num', title: 'switches', textContent: r.switches }),
+      ]));
+    }
+    const h = hiddenBy.get(g);
+    if (h) {
+      body.append(el('tr', { className: 'muted' }, [
+        el('td', { colSpan: 3, textContent: `${h.count} activity spans under 5m not shown` }),
+        el('td', { className: 'num', textContent: minutes(h.seconds) }),
+        el('td', {}),
+      ]));
+    }
+  }
+
+  host.replaceChildren(el('table', { className: 'log' }, [
+    el('colgroup', {}, ['c-cat', 'c-act', 'c-start', 'c-min', 'c-cnt']
+      .map((c) => el('col', { className: c }))),
+    el('thead', {}, el('tr', {}, [
+      el('th', { textContent: 'Category' }),
+      el('th', { textContent: 'Activity' }),
+      el('th', { className: 'num', textContent: 'Start' }),
+      el('th', { className: 'num', textContent: 'Time' }),
+      el('th', { className: 'num', textContent: '⇄', title: 'Times you switched into this activity' }),
+    ])),
+    body,
+  ]));
 }
 
 // ---------- timeline ----------
@@ -63,6 +150,7 @@ function renderChart() {
 
   const sp = spanOf(state.data);
   if (!sp) {
+    state.pitch = 0;
     inner.style.width = '100%';
     chart.append(el('div', { className: 'empty', textContent: 'No activity recorded for this day.' }));
     syncZoomButtons();
@@ -74,6 +162,8 @@ function renderChart() {
   const fitW = Math.max(2, (avail - (sp.count - 1) * GAP) / sp.count);
   const colW = fitW * state.zoom;
   const pitch = colW + GAP;
+  state.first = sp.first;
+  state.pitch = pitch;
   inner.style.width = `${sp.count * colW + (sp.count - 1) * GAP}px`;
 
   const byStart = new Map(state.data.buckets.map((b) => [b.start, b]));
@@ -139,17 +229,17 @@ function syncZoomButtons() {
 // ---------- breakdown panels ----------
 
 async function renderBreakdown() {
-  let totals, labels;
+  let totals, labels, hidden;
   if (state.selected === null) {
-    ({ totals, labels } = state.data);
+    ({ totals, labels, hidden } = state.data);
   } else {
-    ({ totals, labels } = await call('getRange', {
+    ({ totals, labels, hidden } = await call('getRange', {
       from: state.selected, to: state.selected + state.data.bucketSeconds,
     }));
   }
   renderCrumb();
   renderTotals(totals);
-  renderLabels(labels);
+  renderLabels(labels, hidden);
 }
 
 function renderCrumb() {
@@ -195,7 +285,7 @@ function renderTotals(totals) {
   }
 }
 
-function renderLabels(labels) {
+function renderLabels(labels, hidden) {
   const host = $('#labels');
   if (!labels.length) {
     host.replaceChildren(el('div', { className: 'empty', textContent: 'Nothing recorded here.' }));
@@ -215,6 +305,14 @@ function renderLabels(labels) {
     el('td', { className: 'num', textContent: hms(l.seconds) }),
     el('td', { className: 'num', title: 'switches', textContent: l.switches }),
   ])));
+  if (hidden && hidden.count) {
+    body.append(el('tr', { className: 'muted' }, [
+      el('td', {}),
+      el('td', { textContent: `${hidden.count} activity spans under 5m not shown` }),
+      el('td', { className: 'num', textContent: hms(hidden.seconds) }),
+      el('td', {}),
+    ]));
+  }
   host.replaceChildren(el('table', { className: 'activities' }, [cols, head, body]));
 }
 
@@ -386,27 +484,34 @@ $('#saveRules').addEventListener('click', async () => {
   $('#saveMsg').textContent = res.ok ? 'Saved' : `Error: ${res.error}`;
   setTimeout(() => { $('#saveMsg').textContent = ''; }, 2500);
   if (res.ok) {
-    const keep = state.selected;
-    await loadDay();
-    state.selected = keep;
-    renderChart();
-    await renderBreakdown();
+    // Drop the cached views so they re-resolve under the new rules when shown.
+    state.data = null;
+    state.list = null;
     await renderRaw();
   }
 });
 
-$('#prevDay').addEventListener('click', () => { state.day -= 86400; loadDay(); });
-$('#nextDay').addEventListener('click', () => { state.day += 86400; loadDay(); });
-$('#todayBtn').addEventListener('click', () => { state.day = null; loadDay(); });
+$('#prevDay').addEventListener('click', () => { state.day -= 86400; refresh(); });
+$('#nextDay').addEventListener('click', () => { state.day += 86400; refresh(); });
+$('#todayBtn').addEventListener('click', () => { state.day = null; refresh(); });
 
-$('#zoomIn').addEventListener('click', () => {
-  state.zoom = Math.min(ZOOM_MAX, state.zoom * ZOOM_STEP);
+/// Holds the right-hand edge of the viewport fixed in time. At the default
+/// scroll position that edge is the newest bucket, so zooming in moves toward
+/// now rather than toward the start of the day.
+function zoomBy(factor) {
+  const sc = $('#tlScroll');
+  if (!state.pitch) return;
+  const secs = state.data.bucketSeconds;
+  const anchor = state.first + ((sc.scrollLeft + sc.clientWidth) / state.pitch) * secs;
+
+  state.zoom = Math.min(ZOOM_MAX, Math.max(1, state.zoom * factor));
   renderChart();
-});
-$('#zoomOut').addEventListener('click', () => {
-  state.zoom = Math.max(1, state.zoom / ZOOM_STEP);
-  renderChart();
-});
+
+  sc.scrollLeft = ((anchor - state.first) / secs) * state.pitch - sc.clientWidth;
+}
+
+$('#zoomIn').addEventListener('click', () => zoomBy(ZOOM_STEP));
+$('#zoomOut').addEventListener('click', () => zoomBy(1 / ZOOM_STEP));
 
 $('#bucketSel').addEventListener('click', (e) => {
   const b = e.target.closest('[data-b]');
@@ -416,23 +521,43 @@ $('#bucketSel').addEventListener('click', (e) => {
   loadDay();
 });
 
-$('#tabs').addEventListener('click', (e) => {
+$('#groupSel').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-g]');
+  if (!b) return;
+  [...$('#groupSel').children].forEach((c) => c.classList.toggle('is-on', c === b));
+  state.group = b.dataset.g;
+  loadList();
+});
+
+function showView(name) {
+  state.view = name;
+  for (const v of ['list', 'timeline', 'rules']) $(`#view-${v}`).hidden = v !== name;
+  [...$('#tabs').children].forEach((c) => c.classList.toggle('is-on', c.dataset.tab === name));
+  $('#groupSel').hidden = name !== 'list';
+  $('#bucketSel').hidden = name !== 'timeline';
+  $('#zoomSel').hidden = name !== 'timeline';
+}
+
+$('#tabs').addEventListener('click', async (e) => {
   const b = e.target.closest('[data-tab]');
   if (!b) return;
-  [...$('#tabs').children].forEach((c) => c.classList.toggle('is-on', c === b));
-  $('#view-timeline').hidden = b.dataset.tab !== 'timeline';
-  $('#view-rules').hidden = b.dataset.tab !== 'rules';
-  if (b.dataset.tab === 'rules') renderRaw();
-  else renderChart();          // widths are only measurable while visible
+  showView(b.dataset.tab);
+  if (b.dataset.tab === 'timeline') {
+    // Column widths are only measurable once the section is visible.
+    if (!state.data) await loadDay(); else renderChart();
+  } else {
+    await refresh();
+  }
 });
 
 window.addEventListener('resize', () => {
-  if (!$('#view-timeline').hidden && state.data) renderChart();
+  if (state.view === 'timeline' && state.data) renderChart();
 });
 
 (async function init() {
   await loadRules();
-  await loadDay();
+  showView('list');
+  await loadList();
   const s = await call('status');
   $('#status').textContent = s.trusted
     ? 'Recording'

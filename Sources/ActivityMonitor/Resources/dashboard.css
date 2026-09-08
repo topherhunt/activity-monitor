@@ -19,6 +19,7 @@
 }
 
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }   /* .seg sets display:flex, which wins otherwise */
 
 /* Scroll, but never render a bar. WebKit only draws overlay scrollbars when the
    system is set to auto-hide them; otherwise it lays out a legacy bar that eats
@@ -130,11 +131,30 @@ table.activities { table-layout: fixed; }
 .activities .c-title { width: auto; }
 .activities .c-time { width: 52px; }
 .activities .c-cnt  { width: 28px; }
-.activities td.title {
+.activities td.title,
+.log td.title {
   white-space: normal; overflow-wrap: anywhere;
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
   overflow: hidden;
 }
+/* Numbers stay on one line however far the title beside them wraps. */
+td.num { white-space: nowrap; }
+
+/* ---------- list view ---------- */
+table.log { table-layout: fixed; }
+.log .c-cat   { width: 118px; }
+.log .c-act   { width: auto; }
+.log .c-start { width: 68px; }
+.log .c-min   { width: 46px; }
+.log .c-cnt   { width: 28px; }
+.log td.cat { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.log tr.group td {
+  background: var(--bg); font-weight: 600; padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+.log tr.group .mono { font-weight: 400; }
+tr.muted td { color: var(--dim); font-style: italic; }
+tr.muted:hover { background: none; }
 
 .truncate { max-width: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 input[type=text], select {

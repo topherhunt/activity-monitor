@@ -15,24 +15,37 @@
     <button id="todayBtn" class="btn">Today</button>
   </div>
   <div class="row gap">
-    <div class="seg" id="bucketSel">
+    <div class="seg" id="groupSel">
+      <button class="btn seg-btn is-on" data-g="day">Day</button>
+      <button class="btn seg-btn" data-g="hour">Hour</button>
+    </div>
+    <div class="seg" id="bucketSel" hidden>
       <button class="btn seg-btn" data-b="300">5m</button>
       <button class="btn seg-btn" data-b="900">15m</button>
       <button class="btn seg-btn is-on" data-b="3600">1h</button>
     </div>
-    <div class="seg">
+    <div class="seg" id="zoomSel" hidden>
       <button id="zoomOut" class="btn icon" title="Zoom out">&#8722;</button>
       <button id="zoomIn" class="btn icon" title="Zoom in">&#43;</button>
     </div>
     <div class="seg" id="tabs">
-      <button class="btn seg-btn is-on" data-tab="timeline">Timeline</button>
+      <button class="btn seg-btn is-on" data-tab="list">List</button>
+      <button class="btn seg-btn" data-tab="timeline">Timeline</button>
       <button class="btn seg-btn" data-tab="rules">Rules</button>
     </div>
   </div>
 </header>
 
 <main>
-  <section id="view-timeline">
+  <section id="view-list">
+    <div class="pane">
+      <h2>Activity log
+        <span class="hint">newest first &#183; start times resolve to 5 minutes</span></h2>
+      <div id="listTable"></div>
+    </div>
+  </section>
+
+  <section id="view-timeline" hidden>
     <div class="tl-scroll" id="tlScroll">
       <div class="tl-inner" id="tlInner">
         <div id="chart" class="chart"></div>
