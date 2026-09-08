@@ -3,3 +3,4 @@ probe/probe
 .DS_Store
 build/
 .build/
+dist/
