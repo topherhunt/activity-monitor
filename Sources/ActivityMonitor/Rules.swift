@@ -43,19 +43,26 @@ struct RuleSet: Codable {
                 Rule(category: "Idle", app: "^__idle__$", label: "Idle"),
                 Rule(category: "Locked", app: "^__locked__$", label: "Locked"),
 
+                // Labels never repeat the app name -- every view shows that
+                // separately, so putting it here only prints it twice.
+
                 // Strips Claude Code's cycling spinner glyph so one task is one row.
                 Rule(category: "Deep work", app: "^iTerm2$",
-                     title: "^[^\\w(]*\\s*(.+)$", label: "Terminal: $1"),
+                     title: "^[^\\w(]*\\s*(.+)$", label: "$1"),
 
                 // VS Code reports "file.ext — project"; group by project.
                 Rule(category: "Deep work", app: "^Code$",
-                     title: "^.* — (.+)$", label: "VS Code: $1"),
+                     title: "^.* — (.+)$", label: "$1"),
 
                 // Obsidian appends its version number, which churns on update.
                 Rule(category: "Notes", app: "^Obsidian$",
-                     title: "^(.*?) - .* - Obsidian", label: "Obsidian: $1"),
+                     title: "^(.*?) - .* - Obsidian", label: "$1"),
 
-                Rule(category: "Media", app: "^Ludi$", label: "Ludi"),
+                // Chrome suffixes every title with " - Google Chrome - <profile>".
+                Rule(category: "Browsing", app: "^Google Chrome$",
+                     title: "^(.*?) - Google Chrome", label: "$1"),
+
+                Rule(category: "Media", app: "^Ludi$"),
                 Rule(category: "Browsing", app: "Chrome|Safari|Firefox|Brave|Arc"),
             ]
         )

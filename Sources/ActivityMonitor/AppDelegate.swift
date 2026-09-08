@@ -3,7 +3,7 @@ import WebKit
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem!
-    private var popover: NSPopover!
+    private var dashboardWindow: NSWindow!
     private var webView: WKWebView!
     private var store: Store!
     private var sampler: Sampler!
@@ -43,7 +43,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         sampler.start()
 
         buildStatusItem()
-        buildPopover()
+        buildWindow()
     }
 
     private func buildStatusItem() {
@@ -58,21 +58,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    private func buildPopover() {
+    private func buildWindow() {
         let config = WKWebViewConfiguration()
         config.userContentController.addScriptMessageHandler(
             Bridge(delegate: self), contentWorld: .page, name: "bridge")
 
         webView = WKWebView(frame: NSRect(x: 0, y: 0, width: 960, height: 640), configuration: config)
-        webView.setValue(false, forKey: "drawsBackground")
 
-        let controller = NSViewController()
-        controller.view = webView
-
-        popover = NSPopover()
-        popover.contentViewController = controller
-        popover.contentSize = NSSize(width: 960, height: 640)
-        popover.behavior = .transient
+        // No .miniaturizable: an accessory app has no Dock icon, so a minimized
+        // window is awkward to get back to.
+        dashboardWindow = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 960, height: 640),
+            styleMask: [.titled, .closable, .resizable],
+            backing: .buffered, defer: false)
+        dashboardWindow.title = "Activity Monitor"
+        dashboardWindow.contentView = webView
+        dashboardWindow.minSize = NSSize(width: 620, height: 380)
+        // Closing must not destroy the window; the status item reopens this one.
+        dashboardWindow.isReleasedWhenClosed = false
+        dashboardWindow.setFrameAutosaveName("DashboardWindow")
+        if dashboardWindow.frame.origin == .zero { dashboardWindow.center() }
     }
 
     @objc private func statusItemClicked(_ sender: NSStatusBarButton) {
@@ -88,14 +93,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
-        if popover.isShown {
-            popover.performClose(sender)
-        } else {
-            let index = resourceDir.appendingPathComponent("dashboard.html")
-            webView.loadFileURL(index, allowingReadAccessTo: resourceDir)
-            popover.show(relativeTo: sender.bounds, of: sender, preferredEdge: .minY)
-            popover.contentViewController?.view.window?.makeKey()
+        // Only hide on a click that would otherwise do nothing: if the window is
+        // open but buried behind another app, raise it instead of closing it.
+        if dashboardWindow.isVisible && dashboardWindow.isKeyWindow {
+            dashboardWindow.close()
+            return
         }
+
+        let index = resourceDir.appendingPathComponent("dashboard.html")
+        webView.loadFileURL(index, allowingReadAccessTo: resourceDir)
+        // An accessory app is never the active app, so ordering the window front
+        // is not enough to give it keyboard focus.
+        NSApp.activate(ignoringOtherApps: true)
+        dashboardWindow.makeKeyAndOrderFront(nil)
     }
 
     @objc private func revealData() {

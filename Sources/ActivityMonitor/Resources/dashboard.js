@@ -363,9 +363,11 @@ $('#strip').addEventListener('mousemove', (e) => {
   if (ai === undefined) {
     tip.append(el('div', { className: 'hint', textContent: 'no activity recorded' }));
   } else {
+    // Idle and Locked resolve to a label that is just the pseudo-app's name.
+    const same = acts[ai] === actApps[ai];
     tip.append(el('div', { className: 'act' }, [
       el('strong', { textContent: actApps[ai] }),
-      el('span', { textContent: ` ${acts[ai]}` }),
+      el('span', { textContent: same ? '' : ` ${acts[ai]}` }),
     ]));
     tip.append(el('div', { className: 'r' }, [
       el('span', { className: 'swatch', style: `background:${palette[actCats[ai]] || '#6b7280'}` }),
@@ -383,7 +385,7 @@ $('#strip').addEventListener('mousemove', (e) => {
   // the cursor vertically covered the very slices you were scrubbing across.
   const half = tip.offsetWidth / 2;
   tip.style.left = `${Math.max(6, Math.min(e.clientX - half, window.innerWidth - tip.offsetWidth - 6))}px`;
-  tip.style.top = `${$('#axis').getBoundingClientRect().bottom + 8}px`;
+  tip.style.top = `${$('#axis').getBoundingClientRect().bottom - 2}px`;
 });
 $('#strip').addEventListener('mouseleave', () => {
   tip.hidden = true;
