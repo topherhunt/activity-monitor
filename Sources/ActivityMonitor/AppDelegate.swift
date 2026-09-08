@@ -205,33 +205,60 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return summarize(rows: store.rows(from: from, to: to), engine: engine)
     }
 
+    /// The timeline draws one slice per minute, each showing the single activity
+    /// that owned most of that minute. Collapsing to a winner is the point: it
+    /// throws away the tab-flipping noise that made contiguous segments useless.
     private func getDay(_ args: [String: Any]) -> [String: Any] {
         let start = dayStart(args)
         let end = start + 86_400
-        let roll = max(Store.bucketSeconds, (args["bucketSeconds"] as? Int) ?? Store.bucketSeconds)
         let engine = RuleEngine(RuleStore.load(at: rulesURL))
         let rows = store.rows(from: start, to: end)
 
-        var perBucket: [Int: [String: Int]] = [:]        // bucket -> category -> seconds
+        var perMinute: [Int: [String: Int]] = [:]        // minute -> label -> seconds
+        var labelCat: [String: String] = [:]
+        var labelApps: [String: [String: Int]] = [:]     // label -> app -> seconds
         var colors: [String: String] = [:]
         for row in rows {
             let r = engine.resolve(bundleID: row.bundleID, appName: row.appName,
                                    title: row.title, url: row.url)
-            perBucket[(row.bucketStart / roll) * roll, default: [:]][r.category, default: 0] += row.seconds
+            let minute = (row.bucketStart / 60) * 60
+            perMinute[minute, default: [:]][r.label, default: 0] += row.seconds
+            labelCat[r.label] = r.category
+            labelApps[r.label, default: [:]][row.appName, default: 0] += row.seconds
             colors[r.category] = r.color
         }
 
-        let buckets: [[String: Any]] = perBucket.keys.sorted().map { b in
-            let cats = perBucket[b]!.sorted { $0.value > $1.value }.map {
-                ["c": $0.key, "s": $0.value, "color": colors[$0.key] ?? "#6b7280"] as [String: Any]
+        // Send the activity strings once and refer to them by index; a full day
+        // is 1440 slices and most of them repeat the one before.
+        var actIndex: [String: Int] = [:]
+        var acts: [String] = []
+        var actCats: [String] = []
+        var actApps: [String] = []
+        var minutes: [[Int]] = []
+        for minute in perMinute.keys.sorted() {
+            guard let winner = perMinute[minute]!.max(by: {
+                // Ties break on the label so a redraw never reshuffles colours.
+                $0.value != $1.value ? $0.value < $1.value : $0.key > $1.key
+            })?.key else { continue }
+            if actIndex[winner] == nil {
+                actIndex[winner] = acts.count
+                acts.append(winner)
+                actCats.append(labelCat[winner] ?? "Uncategorized")
+                // A rule can collapse several apps into one label; name the app
+                // that actually contributed most of the label's time.
+                actApps.append(labelApps[winner]?.max { $0.value < $1.value }?.key ?? "")
             }
-            return ["start": b, "total": perBucket[b]!.values.reduce(0, +), "cats": cats]
+            minutes.append([minute, actIndex[winner]!])
         }
 
         var out: [String: Any] = [
             "dayStart": start,
-            "bucketSeconds": roll,
-            "buckets": buckets,
+            "minuteSeconds": 60,
+            "minutes": minutes,
+            "acts": acts,
+            "actCats": actCats,
+            "actApps": actApps,
+            "palette": colors,
             "days": store.daysWithData(),
         ]
         summarize(rows: rows, engine: engine, minSeconds: Self.minReportedSeconds)

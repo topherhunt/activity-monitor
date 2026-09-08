@@ -10,13 +10,14 @@ const el = (tag, props = {}, kids = []) => {
   return n;
 };
 
-const GAP = 1;          // px between timeline columns
+const MIN = 60;         // seconds per timeline slice
 const ZOOM_STEP = 1.6;
 const ZOOM_MAX = 40;
 
 const state = {
-  view: 'list',
+  view: 'timeline',
   day: null,
+  minuteAct: null,      // Map of minute -> activity index, built lazily for hover
   group: 'day',         // list view: one group for the day, or one per hour
   bucketSeconds: 3600,
   zoom: 1,              // 1 = whole span fits the panel
@@ -62,6 +63,7 @@ async function loadDay() {
   state.data = await call('getDay', { day: state.day, bucketSeconds: state.bucketSeconds });
   state.day = state.data.dayStart;
   state.selected = null;
+  state.minuteAct = null;
   $('#dayLabel').textContent = dayName(state.day);
   renderChart();
   renderBreakdown();
@@ -134,70 +136,75 @@ function renderList() {
 
 // ---------- timeline ----------
 
-/// Buckets with no data are absent from the query, so the chart rebuilds the
-/// full span: a gap means "app wasn't running" and should read as empty space.
+/// Minutes with no data are absent from the query, so the strip rebuilds the
+/// full span: a gap means "app wasn't running" and reads as bare track.
 function spanOf(data) {
-  if (!data.buckets.length) return null;
-  const first = data.buckets[0].start;
-  const last = data.buckets[data.buckets.length - 1].start;
-  return { first, last, count: (last - first) / data.bucketSeconds + 1 };
+  if (!data.minutes.length) return null;
+  const first = data.minutes[0][0];
+  const last = data.minutes[data.minutes.length - 1][0];
+  return { first, last, count: (last - first) / MIN + 1 };
 }
 
 function renderChart() {
-  const chart = $('#chart'), axis = $('#axis'), inner = $('#tlInner');
-  chart.replaceChildren();
+  const canvas = $('#strip'), axis = $('#axis'), inner = $('#tlInner');
   axis.replaceChildren();
+  $('#cursor').hidden = true;
 
   const sp = spanOf(state.data);
+  $('#tlEmpty').hidden = !!sp;
+  $('#tlScroll').hidden = !sp;
   if (!sp) {
     state.pitch = 0;
-    inner.style.width = '100%';
-    chart.append(el('div', { className: 'empty', textContent: 'No activity recorded for this day.' }));
     syncZoomButtons();
     return;
   }
 
-  const { bucketSeconds } = state.data;
   const avail = $('#tlScroll').clientWidth - 16;            // minus container padding
-  const fitW = Math.max(2, (avail - (sp.count - 1) * GAP) / sp.count);
-  const colW = fitW * state.zoom;
-  const pitch = colW + GAP;
+  const pitch = Math.max(avail / sp.count, 0.1) * state.zoom;
+  const totalW = sp.count * pitch;
   state.first = sp.first;
   state.pitch = pitch;
-  inner.style.width = `${sp.count * colW + (sp.count - 1) * GAP}px`;
+  inner.style.width = `${totalW}px`;
 
-  const byStart = new Map(state.data.buckets.map((b) => [b.start, b]));
-  chart.classList.toggle('has-sel', state.selected !== null);
+  const h = parseFloat(getComputedStyle(canvas).height) || 58;
+  const dpr = window.devicePixelRatio || 1;
+  canvas.style.width = `${totalW}px`;
+  canvas.width = Math.round(totalW * dpr);
+  canvas.height = Math.round(h * dpr);
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, totalW, h);
 
-  for (let i = 0; i < sp.count; i++) {
-    const t = sp.first + i * bucketSeconds;
-    const b = byStart.get(t);
-    const col = el('div', { className: 'col' });
-    col.style.cssText = `width:${colW}px;flex:0 0 auto`;
-    col.dataset.start = t;
-    if (t === state.selected) col.classList.add('is-sel');
-    if (b) {
-      for (const c of b.cats) {
-        col.append(el('div', {
-          className: 'seg-block',
-          style: `height:${(c.s / bucketSeconds) * 100}%;background:${c.color}`,
-        }));
-      }
-    }
-    chart.append(col);
+  const { acts, actCats, palette } = state.data;
+  for (const [t, ai] of state.data.minutes) {
+    ctx.fillStyle = palette[actCats[ai]] || '#6b7280';
+    // Half a pixel of overlap: fractional minute widths would otherwise leave
+    // hairline seams between neighbouring slices.
+    ctx.fillRect(((t - sp.first) / MIN) * pitch, 0, pitch + 0.5, h);
   }
 
-  renderAxis(sp, bucketSeconds, pitch);
+  if (state.selected !== null) {
+    const x0 = ((state.selected - sp.first) / MIN) * pitch;
+    const x1 = x0 + (state.bucketSeconds / MIN) * pitch;
+    ctx.fillStyle = 'rgba(0,0,0,.45)';
+    ctx.fillRect(0, 0, Math.max(0, x0), h);
+    ctx.fillRect(x1, 0, Math.max(0, totalW - x1), h);
+    ctx.strokeStyle = getComputedStyle(document.body).getPropertyValue('--accent').trim();
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x0 + 1, 1, Math.max(2, x1 - x0 - 2), h - 2);
+  }
+
+  renderAxis(sp, pitch);
   syncZoomButtons();
 }
 
 /// Ticks land on real clock hours (and half hours once there is room), never on
-/// whatever arbitrary time the first bucket happens to start at.
-function renderAxis(sp, bucketSeconds, pitch) {
+/// whatever arbitrary minute the day's first observation happens to fall in.
+function renderAxis(sp, pitch) {
   const axis = $('#axis');
-  const x = (t) => ((t - sp.first) / bucketSeconds) * pitch;
-  const end = sp.first + sp.count * bucketSeconds;
-  const hourPx = (3600 / bucketSeconds) * pitch;
+  const x = (t) => ((t - sp.first) / MIN) * pitch;
+  const end = sp.first + sp.count * MIN;
+  const hourPx = (3600 / MIN) * pitch;
   const labelEvery = Math.max(1, Math.ceil(52 / hourPx));
   const showHalf = hourPx >= 120;
 
@@ -234,7 +241,7 @@ async function renderBreakdown() {
     ({ totals, labels, hidden } = state.data);
   } else {
     ({ totals, labels, hidden } = await call('getRange', {
-      from: state.selected, to: state.selected + state.data.bucketSeconds,
+      from: state.selected, to: state.selected + state.bucketSeconds,
     }));
   }
   renderCrumb();
@@ -247,7 +254,7 @@ function renderCrumb() {
   crumb.replaceChildren();
   if (state.selected === null) { crumb.hidden = true; return; }
 
-  const end = state.selected + state.data.bucketSeconds;
+  const end = state.selected + state.bucketSeconds;
   const back = el('button', { className: 'link', textContent: 'Whole day' });
   back.addEventListener('click', clearSelection);
   const close = el('button', { className: 'btn icon', textContent: '✕', title: 'Clear selection' });
@@ -326,41 +333,62 @@ function table(headers, rows, emptyMsg) {
 
 // ---------- chart interaction ----------
 
-$('#chart').addEventListener('click', (e) => {
-  const col = e.target.closest('.col');
-  if (!col) return;
-  const start = +col.dataset.start;
+/// Which minute the pointer is over, or null when the strip is empty.
+function minuteAt(e) {
+  if (!state.pitch) return null;
+  const x = e.clientX - $('#strip').getBoundingClientRect().left;
+  return state.first + Math.floor(x / state.pitch) * MIN;
+}
+
+$('#strip').addEventListener('click', (e) => {
+  const t = minuteAt(e);
+  if (t === null) return;
+  // The 5m/15m/1h control sets how wide a slice the drill-down covers.
+  const start = Math.floor(t / state.bucketSeconds) * state.bucketSeconds;
   state.selected = state.selected === start ? null : start;
   renderChart();
   renderBreakdown();
 });
 
 const tip = $('#tip');
-$('#chart').addEventListener('mousemove', (e) => {
-  const col = e.target.closest('.col');
-  if (!col) { tip.hidden = true; return; }
-  const start = +col.dataset.start;
-  const b = (state.data.buckets || []).find((x) => x.start === start);
-  tip.replaceChildren(el('b', {
-    textContent: `${clock(start)} – ${clock(start + state.data.bucketSeconds)}`,
-  }));
-  if (!b) {
-    tip.append(el('div', { className: 'hint', textContent: 'no activity' }));
+$('#strip').addEventListener('mousemove', (e) => {
+  const t = minuteAt(e);
+  if (t === null) { tip.hidden = true; return; }
+
+  if (!state.minuteAct) state.minuteAct = new Map(state.data.minutes);
+  const ai = state.minuteAct.get(t);
+  const { acts, actCats, actApps, palette } = state.data;
+
+  tip.replaceChildren(el('b', { textContent: clock(t) }));
+  if (ai === undefined) {
+    tip.append(el('div', { className: 'hint', textContent: 'no activity recorded' }));
   } else {
-    for (const c of b.cats) {
-      tip.append(el('div', { className: 'r' }, [
-        el('span', { className: 'swatch', style: `background:${c.color}` }),
-        el('span', { textContent: c.c, style: 'flex:1' }),
-        el('span', { className: 'mono', textContent: hms(c.s) }),
-      ]));
-    }
+    tip.append(el('div', { className: 'act' }, [
+      el('strong', { textContent: actApps[ai] }),
+      el('span', { textContent: ` ${acts[ai]}` }),
+    ]));
+    tip.append(el('div', { className: 'r' }, [
+      el('span', { className: 'swatch', style: `background:${palette[actCats[ai]] || '#6b7280'}` }),
+      el('span', { textContent: actCats[ai] }),
+    ]));
   }
   tip.hidden = false;
-  const pad = 14;
-  tip.style.left = Math.min(e.clientX + pad, window.innerWidth - tip.offsetWidth - 6) + 'px';
-  tip.style.top = Math.min(e.clientY + pad, window.innerHeight - tip.offsetHeight - 6) + 'px';
+
+  const cur = $('#cursor');
+  cur.style.left = `${((t - state.first) / MIN) * state.pitch}px`;
+  cur.style.width = `${Math.max(1, state.pitch)}px`;
+  cur.hidden = false;
+
+  // Parked below the axis and centred on the pointer: a tooltip that tracked
+  // the cursor vertically covered the very slices you were scrubbing across.
+  const half = tip.offsetWidth / 2;
+  tip.style.left = `${Math.max(6, Math.min(e.clientX - half, window.innerWidth - tip.offsetWidth - 6))}px`;
+  tip.style.top = `${$('#axis').getBoundingClientRect().bottom + 8}px`;
 });
-$('#chart').addEventListener('mouseleave', () => { tip.hidden = true; });
+$('#strip').addEventListener('mouseleave', () => {
+  tip.hidden = true;
+  $('#cursor').hidden = true;
+});
 
 // ---------- rules ----------
 
@@ -501,13 +529,12 @@ $('#todayBtn').addEventListener('click', () => { state.day = null; refresh(); })
 function zoomBy(factor) {
   const sc = $('#tlScroll');
   if (!state.pitch) return;
-  const secs = state.data.bucketSeconds;
-  const anchor = state.first + ((sc.scrollLeft + sc.clientWidth) / state.pitch) * secs;
+  const anchor = state.first + ((sc.scrollLeft + sc.clientWidth) / state.pitch) * MIN;
 
   state.zoom = Math.min(ZOOM_MAX, Math.max(1, state.zoom * factor));
   renderChart();
 
-  sc.scrollLeft = ((anchor - state.first) / secs) * state.pitch - sc.clientWidth;
+  sc.scrollLeft = ((anchor - state.first) / MIN) * state.pitch - sc.clientWidth;
 }
 
 $('#zoomIn').addEventListener('click', () => zoomBy(ZOOM_STEP));
@@ -518,7 +545,9 @@ $('#bucketSel').addEventListener('click', (e) => {
   if (!b) return;
   [...$('#bucketSel').children].forEach((c) => c.classList.toggle('is-on', c === b));
   state.bucketSeconds = +b.dataset.b;
-  loadDay();
+  state.selected = null;      // the strip is unchanged; only the drill-down width moved
+  renderChart();
+  renderBreakdown();
 });
 
 $('#groupSel').addEventListener('click', (e) => {
@@ -556,8 +585,8 @@ window.addEventListener('resize', () => {
 
 (async function init() {
   await loadRules();
-  showView('list');
-  await loadList();
+  showView('timeline');
+  await loadDay();
   const s = await call('status');
   $('#status').textContent = s.trusted
     ? 'Recording'

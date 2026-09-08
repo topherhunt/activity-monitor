@@ -3,7 +3,7 @@ import SQLite3
 
 let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 
-/// One observed (app, title, url) key within one 5-minute bucket.
+/// One observed (app, title, url) key within one bucket.
 struct TallyRow {
     var bucketStart: Int
     var bundleID: String
@@ -31,7 +31,12 @@ enum StoreError: Error, CustomStringConvertible {
 /// at read time, so re-editing a rule retroactively reshapes every past day.
 final class Store {
     /// Storage granularity. Read-time rollups are integer multiples of this.
-    static let bucketSeconds = 300
+    /// One minute is the finest slice the timeline draws, so it is also the
+    /// finest the store keeps.
+    static let bucketSeconds = 60
+
+    /// Bumped when the on-disk layout changes; see migrate().
+    private static let schemaVersion: Int32 = 1
 
     private var db: OpaquePointer?
     private var upsertStmt: OpaquePointer?
@@ -68,6 +73,43 @@ final class Store {
         guard sqlite3_prepare_v2(db, sql, -1, &upsertStmt, nil) == SQLITE_OK else {
             throw StoreError.sql(String(cString: sqlite3_errmsg(db)))
         }
+        try migrate()
+    }
+
+    /// Version 1 re-cuts the original 5-minute tallies into 1-minute ones. A
+    /// bucket only records how much time went where, not when within itself, so
+    /// its seconds spread evenly across its five minutes -- which reproduces the
+    /// right dominant activity per minute whenever one activity owned the bucket.
+    private func migrate() throws {
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, "PRAGMA user_version;", -1, &stmt, nil) == SQLITE_OK else {
+            throw StoreError.sql(String(cString: sqlite3_errmsg(db)))
+        }
+        let current = sqlite3_step(stmt) == SQLITE_ROW ? sqlite3_column_int(stmt, 0) : 0
+        sqlite3_finalize(stmt)
+        guard current < Self.schemaVersion else { return }
+
+        let legacy = rows(from: 0, to: Int.max)
+        try exec("BEGIN IMMEDIATE;")
+        if !legacy.isEmpty {
+            try exec("DELETE FROM bucket_tally;")
+            for row in legacy {
+                let slices = 300 / Self.bucketSeconds
+                let each = row.seconds / slices
+                for i in 0..<slices {
+                    // The remainder and the switch count both land on the first
+                    // minute; there is no evidence for putting them anywhere else.
+                    let seconds = each + (i == 0 ? row.seconds % slices : 0)
+                    if seconds == 0 { continue }
+                    add(bucketStart: row.bucketStart + i * Self.bucketSeconds,
+                        bundleID: row.bundleID, appName: row.appName,
+                        title: row.title, url: row.url,
+                        seconds: seconds, switches: i == 0 ? row.switches : 0)
+                }
+            }
+        }
+        try exec("PRAGMA user_version = \(Self.schemaVersion);")
+        try exec("COMMIT;")
     }
 
     deinit {

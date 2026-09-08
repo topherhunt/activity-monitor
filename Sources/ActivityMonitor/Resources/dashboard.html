@@ -29,30 +29,32 @@
       <button id="zoomIn" class="btn icon" title="Zoom in">&#43;</button>
     </div>
     <div class="seg" id="tabs">
-      <button class="btn seg-btn is-on" data-tab="list">List</button>
-      <button class="btn seg-btn" data-tab="timeline">Timeline</button>
+      <button class="btn seg-btn" data-tab="list">List</button>
+      <button class="btn seg-btn is-on" data-tab="timeline">Timeline</button>
       <button class="btn seg-btn" data-tab="rules">Rules</button>
     </div>
   </div>
 </header>
 
 <main>
-  <section id="view-list">
+  <section id="view-list" hidden>
     <div class="pane">
       <h2>Activity log
-        <span class="hint">newest first &#183; start times resolve to 5 minutes</span></h2>
+        <span class="hint">newest first &#183; start times resolve to 1 minute</span></h2>
       <div id="listTable"></div>
     </div>
   </section>
 
-  <section id="view-timeline" hidden>
+  <section id="view-timeline">
     <div class="tl-scroll" id="tlScroll">
       <div class="tl-inner" id="tlInner">
-        <div id="chart" class="chart"></div>
+        <canvas id="strip" class="strip"></canvas>
+        <div id="cursor" class="cursor" hidden></div>
         <div id="axis" class="axis"></div>
       </div>
     </div>
 
+    <div id="tlEmpty" class="empty" hidden>No activity recorded for this day.</div>
     <nav id="crumb" class="crumb" hidden></nav>
 
     <div class="split">
