@@ -4,7 +4,7 @@ Notable changes, newest first. Versions follow [semver](https://semver.org); the
 
 `scripts/release.sh <version>` reads the section matching that version and uses it verbatim as the GitHub release notes, so write the section before cutting the release.
 
-## [0.1.0] - 2026-09-08
+## [0.1.0] - 2026-09-09
 
 First release.
 

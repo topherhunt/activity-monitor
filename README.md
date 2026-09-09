@@ -104,6 +104,8 @@ AM_RESOURCES="$PWD/Sources/ActivityMonitor/Resources" ./build/ActivityMonitor.ap
 
 ## Cutting a release
 
+One-time setup: install [`gh`](https://cli.github.com) (`brew install gh`) and log in (`gh auth login`). Tokens expire, so if a release stops at `gh is not logged in`, run `gh auth login` again.
+
 ```sh
 # 1. Write the notes
 $EDITOR CHANGELOG.md          # add a "## [0.2.0] - YYYY-MM-DD" section
@@ -115,7 +117,7 @@ bash scripts/release.sh 0.2.0
 
 That builds a universal ad-hoc-signed app into `dist/`, zips it, and shows you exactly what it is about to do. Answer `y` and it writes `VERSION`, commits, tags `v0.2.0`, pushes the branch and the tag, and creates the GitHub release with the changelog section as the release notes. Answer anything else and nothing is pushed.
 
-Every check that can fail -- missing `gh`, dirty tree, tag already taken, no changelog section -- runs before the build, and the build finishes before you are asked to confirm, so you never end up with a tag pointing at something that does not compile. Needs [`gh`](https://cli.github.com) logged in (`gh auth login`).
+There are no git tags to juggle by hand and no CI to wait on -- the version number in that one command is the only thing you have to get right. Every check that can fail -- missing `gh`, dirty tree, tag already taken, no changelog section -- runs before the build, and the build finishes before you are asked to confirm, so you never end up with a tag pointing at something that does not compile.
 
 ## Limitations
 
