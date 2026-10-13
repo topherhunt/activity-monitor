@@ -4,9 +4,7 @@ A small macOS menu-bar app that records which application and window you are act
 
 It exists because the good time trackers are either expensive, cloud-hosted, or have a UI that makes the data hard to look at. This one keeps everything on your machine in a SQLite file, and puts the whole day on one strip you can scrub with the mouse.
 
-<!-- Drop a screenshot at docs/screenshot.png and uncomment:
-![The dashboard](docs/screenshot.png)
--->
+![The dashboard](docs/screenshot.jpg)
 
 ## What it does
 
