@@ -34,13 +34,13 @@ Right-click the menu-bar icon for **Reveal Data Folder** and **Quit**.
 
 Grab the `.zip` from the [latest release](../../releases/latest), unzip it, and drag `ActivityMonitor.app` into `/Applications`.
 
-The app is **not notarized by Apple** -- notarization needs a paid Apple Developer account. macOS will therefore refuse to open it on the first try. To get past that:
+The app is **not notarized by Apple** -- notarization needs a paid Apple Developer account. macOS will therefore refuse to open it on the first try, saying it cannot verify the developer. To get past that:
 
-```sh
-xattr -dr com.apple.quarantine /Applications/ActivityMonitor.app
-```
+1. Double-click `ActivityMonitor.app` and let macOS block it. Dismiss the dialog.
+2. Open **System Settings → Privacy & Security** and scroll down to the Security section.
+3. Click **Open Anyway** next to the line naming the app, and confirm.
 
-Or, without the terminal: double-click it, let it be blocked, then go to **System Settings → Privacy & Security**, scroll to the bottom, and click **Open Anyway**.
+That grants an exception for this copy. A version you download later arrives with its own quarantine flag, so it needs the same three steps again.
 
 Then grant permission, or the window titles will all be blank:
 
@@ -106,18 +106,13 @@ AM_RESOURCES="$PWD/Sources/ActivityMonitor/Resources" ./build/ActivityMonitor.ap
 
 One-time setup: install [`gh`](https://cli.github.com) (`brew install gh`) and log in (`gh auth login`). Tokens expire, so if a release stops at `gh is not logged in`, run `gh auth login` again.
 
-```sh
-# 1. Write the notes
-$EDITOR CHANGELOG.md          # add a "## [0.2.0] - YYYY-MM-DD" section
-git commit -am "Changelog for 0.2.0"
+The version lives in the `VERSION` file, so the repo always records what was last released. To release, bump `VERSION` (e.g. `0.2.0`), commit, push, then run:
 
-# 2. Ship it
-bash scripts/release.sh 0.2.0
+```sh
+bash scripts/release.sh
 ```
 
-That builds a universal ad-hoc-signed app into `dist/`, zips it, and shows you exactly what it is about to do. Answer `y` and it writes `VERSION`, commits, tags `v0.2.0`, pushes the branch and the tag, and creates the GitHub release with the changelog section as the release notes. Answer anything else and nothing is pushed.
-
-There are no git tags to juggle by hand and no CI to wait on -- the version number in that one command is the only thing you have to get right. Every check that can fail -- missing `gh`, dirty tree, tag already taken, no changelog section -- runs before the build, and the build finishes before you are asked to confirm, so you never end up with a tag pointing at something that does not compile.
+This publishes the current `main` commit as GitHub release `v0.2.0` with `ActivityMonitor-0.2.0.zip` attached. It stops with an error if you're not on `main`, if there are uncommitted changes, if `main` doesn't match `origin/main` (push first), or if that version is already released (bump `VERSION`). It then builds a universal (Apple Silicon + Intel) ad-hoc-signed app into `dist/`, zips it, shows a summary, and asks for confirmation. Only then does it create the tag and release on GitHub. Release notes are generated from the commits since the previous release. It never commits or pushes for you.
 
 ## Limitations
 
