@@ -27,8 +27,9 @@ enum StoreError: Error, CustomStringConvertible {
 }
 
 /// Append-only tally of raw observations. Titles are stored exactly as the
-/// Accessibility API reported them; all cleanup and grouping happens in Rules
-/// at read time, so re-editing a rule retroactively reshapes every past day.
+/// Accessibility API or a context file reported them; all cleanup and grouping
+/// happens in Rules at read time, so re-editing a rule retroactively reshapes
+/// every past day.
 final class Store {
     /// Storage granularity. Read-time rollups are integer multiples of this.
     /// One minute is the finest slice the timeline draws, so it is also the

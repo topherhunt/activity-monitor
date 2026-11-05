@@ -8,7 +8,7 @@ It exists because the good time trackers are either expensive, cloud-hosted, or 
 
 ## What it does
 
-A sampler polls the frontmost application and its focused window title every 2 seconds and adds the elapsed time to a per-minute bucket. Two minutes without keyboard or mouse input counts as **Idle**, and a locked screen counts as **Locked**; both override application attribution, so time away from the machine is never billed to whatever was in front. In Safari and Chromium browsers it also reads the active tab's URL.
+A sampler polls the frontmost application and its focused window title every 2 seconds and adds the elapsed time to a per-minute bucket. Two minutes without keyboard or mouse input counts as **Idle**, and a locked screen counts as **Locked**; both override application attribution, so time away from the machine is never billed to whatever was in front. In Safari and Chromium browsers it also reads the active tab's URL. Apps with a static window title can [report their own context](#reporting-context-from-your-app).
 
 Everything you see is computed at read time from **rules** you control. A rule matches on application, window title and URL, and assigns a category plus a display label:
 
@@ -57,6 +57,7 @@ Everything stays on your machine. There is no network code in this app, no telem
 ~/Library/Application Support/ActivityMonitor/
   activity.sqlite3    every observation, append-only
   rules.json          your categories and rules
+  context/            what other apps report they are doing, if any
 ```
 
 Window titles are recorded verbatim, so the database contains the names of documents, repositories, and web pages you had open. Treat it like a diary. Uninstalling the app does not delete it; remove that folder yourself if you want it gone.
@@ -68,6 +69,27 @@ sqlite3 ~/Library/Application\ Support/ActivityMonitor/activity.sqlite3 \
   "SELECT datetime(bucket_start,'unixepoch','localtime'), app_name, title, seconds
    FROM bucket_tally ORDER BY bucket_start DESC LIMIT 20;"
 ```
+
+## Reporting context from your app
+
+An app whose window title never changes can tell the sampler what the user is doing by writing a JSON file named after its bundle id. There is no socket or server: the file is the whole API.
+
+```
+~/Library/Application Support/ActivityMonitor/context/dev.herdr.app.json
+```
+
+```json
+{"title": "my-repo / fix login / claude", "url": "https://example.com/optional"}
+```
+
+`title` is required and must not be blank; `url` is optional.
+
+- **Write atomically.** Write a temp file in the same folder, then rename it over the target, so the sampler never reads half a file. Create the folder if it doesn't exist.
+- **Keep it fresh.** Rewrite the file when the context changes, and at least every 30 seconds while your app is frontmost. Only the file's modification time counts, so an unchanged rewrite still renews it.
+
+While your app is frontmost and its file is under 60 seconds old, `title` and `url` replace the window title and URL. If the file is older or missing, the sampler goes back to the window title, so a client that dies can't keep crediting an old title. A malformed file is logged to Console.app and ignored the same way. Idle and Locked still win.
+
+Reported values are stored and matched by rules exactly like window titles, so they get the same treatment in every view and in retroactive rule edits.
 
 ## Building from source
 
@@ -83,6 +105,8 @@ The certificate step is worth doing before anything else. macOS pins the Accessi
 
 `scripts/build.sh` honours three environment variables: `AM_SIGN_IDENTITY` (certificate name, or `-` for ad-hoc), `AM_APP_DIR` (output directory), and `AM_UNIVERSAL=1` (build for both arm64 and x86_64).
 
+`swift test` runs the tests.
+
 To iterate on the dashboard without rebuilding, point the app at the source directory:
 
 ```sh
@@ -94,6 +118,7 @@ AM_RESOURCES="$PWD/Sources/ActivityMonitor/Resources" ./build/ActivityMonitor.ap
 | File | What lives there |
 | --- | --- |
 | `Sampler.swift` | Polling, idle and lock detection, Accessibility and browser URL reads |
+| `ContextFiles.swift` | Reads the context files apps write about themselves |
 | `Store.swift` | SQLite tally, schema migrations |
 | `Rules.swift` | Rule matching and the shipped defaults |
 | `AppDelegate.swift` | Status item, window, and the read-time aggregation the dashboard asks for |

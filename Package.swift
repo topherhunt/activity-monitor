@@ -9,6 +9,11 @@ let package = Package(
             name: "ActivityMonitor",
             path: "Sources/ActivityMonitor",
             exclude: ["Resources"]
-        )
+        ),
+        .testTarget(
+            name: "ActivityMonitorTests",
+            dependencies: ["ActivityMonitor"],
+            path: "Tests/ActivityMonitorTests"
+        ),
     ]
 )

@@ -38,7 +38,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
-        sampler = Sampler(store: store)
+        sampler = Sampler(store: store, contextFiles: ContextFiles(
+            dir: supportDir.appendingPathComponent("context", isDirectory: true)))
         if !sampler.isTrusted { sampler.requestAccessibility() }
         sampler.start()
 

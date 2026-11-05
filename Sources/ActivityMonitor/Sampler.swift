@@ -3,12 +3,14 @@ import ApplicationServices
 
 /// Polls the frontmost app + focused window title and adds the elapsed time to
 /// the current bucket. Idle and lock override app attribution entirely, so time
-/// spent away is never credited to whatever happened to be in front.
+/// spent away is never credited to whatever happened to be in front. A fresh
+/// context file overrides the window title and URL.
 final class Sampler {
     static let idleBundleID = "__idle__"
     static let lockedBundleID = "__locked__"
 
     private let store: Store
+    private let contextFiles: ContextFiles
     private let pollInterval: TimeInterval = 2.0
     private let idleThreshold: TimeInterval = 120.0
     /// Cap on seconds credited to one poll, so a sleep/wake gap does not get
@@ -26,8 +28,9 @@ final class Sampler {
 
     private(set) var lastObservation = "starting up"
 
-    init(store: Store) {
+    init(store: Store, contextFiles: ContextFiles) {
         self.store = store
+        self.contextFiles = contextFiles
         let dnc = DistributedNotificationCenter.default()
         dnc.addObserver(forName: .init("com.apple.screenIsLocked"), object: nil, queue: .main) { [weak self] _ in
             self?.screenLocked = true
@@ -85,6 +88,9 @@ final class Sampler {
         }
         let bundleID = app.bundleIdentifier ?? "unknown"
         let appName = app.localizedName ?? bundleID
+        if let context = contextFiles.fresh(bundleID: bundleID) {
+            return (bundleID, appName, context.title, context.url)
+        }
         let title = focusedWindowTitle(pid: app.processIdentifier)
             .trimmingCharacters(in: .whitespacesAndNewlines)
 
