@@ -112,7 +112,7 @@ main { flex: 1; overflow-y: auto; padding: 12px 14px 16px; }
 /* One continuous strip, a minute per slice, drawn to canvas so sub-pixel
    minutes abut cleanly instead of leaving seams between elements. */
 .strip { display: block; width: 100%; height: var(--strip-h); cursor: crosshair;
-         border-radius: 3px; background: var(--line); }
+         border-radius: 3px; background: var(--line); -webkit-user-select: none; }
 .cursor { position: absolute; top: 0; height: var(--strip-h); width: 1px;
           background: var(--ink); opacity: .7; pointer-events: none; }
 

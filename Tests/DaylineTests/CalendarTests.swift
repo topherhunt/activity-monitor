@@ -60,6 +60,16 @@ struct CalendarTests {
         #expect(js.evaluateScript("dayKey(2026, 0, 5)").toString() == "2026-01-05")
     }
 
+    @Test func rangeRunsThroughTheEndOfTheLaterMinute() {
+        #expect(js.evaluateScript("rangeBetween(600, 780).to").toInt32() == 840)
+        #expect(js.evaluateScript("rangeBetween(600, 780).from").toInt32() == 600)
+    }
+
+    @Test func rangeIsTheSameDraggedInEitherDirection() {
+        #expect(js.evaluateScript("JSON.stringify(rangeBetween(780, 600))").toString()
+            == js.evaluateScript("JSON.stringify(rangeBetween(600, 780))").toString())
+    }
+
     @Test func epochOfRollsOverIntoTheNextYear() {
         let expected = DateComponents(calendar: .current, year: 2027, month: 1, day: 1).date!
         #expect(js.evaluateScript("epochOf(2026, 12, 1)").toDouble() == expected.timeIntervalSince1970)

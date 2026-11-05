@@ -13,6 +13,7 @@ const el = (tag, props = {}, kids = []) => {
 const MIN = 60;         // seconds per timeline slice
 const ZOOM_STEP = 1.6;
 const ZOOM_MAX = 40;
+const DRAG_PX = 3;         // less pointer travel than this is a click, not a drag
 const ICON_PX = 16;
 // An icon may overhang its own stretch by up to 40% and still read correctly,
 // so a stretch only has to be this wide to earn one.
@@ -24,11 +25,11 @@ const state = {
   day: null,
   minuteAct: null,      // Map of minute -> activity index, built lazily for hover
   group: 'day',         // list view: one group for the day, or one per hour
-  bucketSeconds: 3600,
-  cal: null,            // { year, month } while the day picker is open
+  cal: null,           // { year, month } while the day picker is open
   zoom: 1,              // 1 = MIN_PITCH per minute
   zoomMin: 1,           // the zoom at which the whole span fits, set by renderChart
-  selected: null,       // bucket start when drilled in, else null
+  selected: null,       // { from, to } epochs of the dragged range, else null
+  drag: null,           // { anchor, x, moved } while the pointer is down on the strip
   first: 0,             // epoch of the leftmost column, set by renderChart
   pitch: 0,             // px per bucket, set by renderChart
   rules: null,
@@ -67,7 +68,7 @@ async function loadList() {
 }
 
 async function loadDay() {
-  state.data = await call('getDay', { day: state.day, bucketSeconds: state.bucketSeconds });
+  state.data = await call('getDay', { day: state.day });
   state.day = state.data.dayStart;
   state.selected = null;
   state.minuteAct = null;
@@ -231,6 +232,9 @@ function spanOf(data) {
 
 function renderChart() {
   const canvas = $('#strip'), axis = $('#axis'), inner = $('#tlInner');
+  // The last axis label overhangs the strip, so emptying the axis shrinks the
+  // scroll width and would pull a right-scrolled strip left under the pointer.
+  const scrollLeft = $('#tlScroll').scrollLeft;
   axis.replaceChildren();
   $('#cursor').hidden = true;
 
@@ -277,8 +281,8 @@ function renderChart() {
   drawIcons(ctx, sp, pitch, h);
 
   if (state.selected !== null) {
-    const x0 = ((state.selected - sp.first) / MIN) * pitch;
-    const x1 = x0 + (state.bucketSeconds / MIN) * pitch;
+    const x0 = ((state.selected.from - sp.first) / MIN) * pitch;
+    const x1 = ((state.selected.to - sp.first) / MIN) * pitch;
     ctx.fillStyle = 'rgba(0,0,0,.45)';
     ctx.fillRect(0, 0, Math.max(0, x0), h);
     ctx.fillRect(x1, 0, Math.max(0, totalW - x1), h);
@@ -288,6 +292,7 @@ function renderChart() {
   }
 
   renderAxis(sp, pitch);
+  $('#tlScroll').scrollLeft = scrollLeft;
   syncZoomButtons();
 }
 
@@ -371,13 +376,13 @@ function syncZoomButtons() {
 // ---------- breakdown panels ----------
 
 async function renderBreakdown() {
+  const selected = state.selected;
   let totals, labels, hidden;
-  if (state.selected === null) {
+  if (selected === null) {
     ({ totals, labels, hidden } = state.data);
   } else {
-    ({ totals, labels, hidden } = await call('getRange', {
-      from: state.selected, to: state.selected + state.bucketSeconds,
-    }));
+    ({ totals, labels, hidden } = await call('getRange', selected));
+    if (state.selected !== selected) return;      // a newer selection took over
   }
   renderCrumb();
   renderTotals(totals);
@@ -389,7 +394,7 @@ function renderCrumb() {
   crumb.replaceChildren();
   if (state.selected === null) { crumb.hidden = true; return; }
 
-  const end = state.selected + state.bucketSeconds;
+  const { from, to } = state.selected;
   const back = el('button', { className: 'link', textContent: 'Whole day' });
   back.addEventListener('click', clearSelection);
   const close = el('button', { className: 'btn icon', textContent: '✕', title: 'Clear selection' });
@@ -397,7 +402,7 @@ function renderCrumb() {
 
   crumb.append(back,
     el('span', { className: 'sep', textContent: '›' }),
-    el('span', { className: 'cur', textContent: `${clock(state.selected)} – ${clock(end)}` }),
+    el('span', { className: 'cur', textContent: `${clock(from)} – ${clock(to)}` }),
     close);
   crumb.hidden = false;
 }
@@ -468,21 +473,41 @@ function table(headers, rows, emptyMsg) {
 
 // ---------- chart interaction ----------
 
-/// Which minute the pointer is over, or null when the strip is empty.
+/// Which minute the pointer is over, or null when the strip is empty. Clamped,
+/// because a captured drag keeps reporting past the ends of the strip.
 function minuteAt(e) {
   if (!state.pitch) return null;
   const x = e.clientX - $('#strip').getBoundingClientRect().left;
-  return state.first + Math.floor(x / state.pitch) * MIN;
+  const { first, last } = spanOf(state.data);
+  return Math.max(first, Math.min(last, first + Math.floor(x / state.pitch) * MIN));
 }
 
-$('#strip').addEventListener('click', (e) => {
+$('#strip').addEventListener('pointerdown', (e) => {
   const t = minuteAt(e);
   if (t === null) return;
-  // The 5m/15m/1h control sets how wide a slice the drill-down covers.
-  const start = Math.floor(t / state.bucketSeconds) * state.bucketSeconds;
-  state.selected = state.selected === start ? null : start;
+  $('#strip').setPointerCapture(e.pointerId);
+  state.drag = { anchor: t, x: e.clientX, moved: false };
+});
+
+$('#strip').addEventListener('pointermove', (e) => {
+  const drag = state.drag;
+  if (!drag) return;
+  drag.moved ||= Math.abs(e.clientX - drag.x) >= DRAG_PX;
+  if (!drag.moved) return;
+
+  const range = rangeBetween(drag.anchor, minuteAt(e));
+  if (state.selected?.from === range.from && state.selected?.to === range.to) return;
+  state.selected = range;
   renderChart();
-  renderBreakdown();
+  renderCrumb();
+});
+
+// Fires on release and on cancel, so a drag can't end without settling the panels.
+$('#strip').addEventListener('lostpointercapture', () => {
+  const { moved } = state.drag;
+  state.drag = null;
+  if (moved) renderBreakdown();
+  else if (state.selected !== null) clearSelection();
 });
 
 const tip = $('#tip');
@@ -687,16 +712,6 @@ function zoomBy(factor) {
 $('#zoomIn').addEventListener('click', () => zoomBy(ZOOM_STEP));
 $('#zoomOut').addEventListener('click', () => zoomBy(1 / ZOOM_STEP));
 
-$('#bucketSel').addEventListener('click', (e) => {
-  const b = e.target.closest('[data-b]');
-  if (!b) return;
-  [...$('#bucketSel').children].forEach((c) => c.classList.toggle('is-on', c === b));
-  state.bucketSeconds = +b.dataset.b;
-  state.selected = null;      // the strip is unchanged; only the drill-down width moved
-  renderChart();
-  renderBreakdown();
-});
-
 $('#groupSel').addEventListener('click', (e) => {
   const b = e.target.closest('[data-g]');
   if (!b) return;
@@ -710,7 +725,6 @@ function showView(name) {
   for (const v of ['list', 'timeline', 'rules']) $(`#view-${v}`).hidden = v !== name;
   [...$('#tabs').children].forEach((c) => c.classList.toggle('is-on', c.dataset.tab === name));
   $('#groupSel').hidden = name !== 'list';
-  $('#bucketSel').hidden = name !== 'timeline';
   $('#zoomSel').hidden = name !== 'timeline';
 }
 

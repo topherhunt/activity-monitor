@@ -1,7 +1,8 @@
 'use strict';
 
-// Date and shading logic for the day picker. No DOM here, so `swift test` can run
-// it in JavaScriptCore. Months are 0-based, like Date.
+// Date and shading logic for the day picker and the timeline's range selection.
+// No DOM here, so `swift test` can run it in JavaScriptCore. Months are 0-based,
+// like Date.
 
 const HEAT_HOURS = [3, 6, 9, 12];   // each value starts the next shade
 
@@ -22,6 +23,10 @@ function monthCells(year, month) {
 /// Same format as the keys from Store.activeSecondsByDay.
 const dayKey = (year, month, day) =>
   `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+
+/// The range a drag covers, in either direction, between two minute starts. `to`
+/// is exclusive, so it runs through the end of the later minute.
+const rangeBetween = (a, b) => ({ from: Math.min(a, b), to: Math.max(a, b) + 60 });
 
 /// Local midnight. Out-of-range values roll over, and DST days stay correct,
 /// which adding 86400 to an epoch would not.
