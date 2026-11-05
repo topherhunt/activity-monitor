@@ -8,11 +8,11 @@
 # developer account and no Xcode required.
 #
 # This writes to your login keychain, which is why it is not run automatically.
-# To undo: delete "Activity Monitor Dev" in Keychain Access.
+# To undo: delete "Dayline Dev" in Keychain Access.
 set -euo pipefail
 
-NAME="Activity Monitor Dev"
-PASS="activitymonitor"
+NAME="Dayline Dev"
+PASS="dayline"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 

@@ -212,7 +212,7 @@ let trusted = AXIsProcessTrustedWithOptions(
     [kAXTrustedCheckOptionPrompt.takeUnretainedValue(): true] as CFDictionary
 )
 
-print("activity-monitor probe")
+print("dayline probe")
 print("  accessibility trusted: \(trusted)")
 print("  idle timer:            \(idleSeconds() >= 0 ? "ok" : "UNAVAILABLE (CGEventType(~0) was nil)")")
 print("  logging to:            \(logPath)")

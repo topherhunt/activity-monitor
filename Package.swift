@@ -2,18 +2,18 @@
 import PackageDescription
 
 let package = Package(
-    name: "ActivityMonitor",
+    name: "Dayline",
     platforms: [.macOS(.v13)],
     targets: [
         .executableTarget(
-            name: "ActivityMonitor",
-            path: "Sources/ActivityMonitor",
+            name: "Dayline",
+            path: "Sources/Dayline",
             exclude: ["Resources"]
         ),
         .testTarget(
-            name: "ActivityMonitorTests",
-            dependencies: ["ActivityMonitor"],
-            path: "Tests/ActivityMonitorTests"
+            name: "DaylineTests",
+            dependencies: ["Dayline"],
+            path: "Tests/DaylineTests"
         ),
     ]
 )

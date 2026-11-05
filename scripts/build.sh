@@ -1,7 +1,7 @@
 #!/bin/bash
-# Builds ActivityMonitor.app. Run with: bash scripts/build.sh
+# Builds Dayline.app. Run with: bash scripts/build.sh
 #
-# Signing: uses the "Activity Monitor Dev" certificate when it exists, else
+# Signing: uses the "Dayline Dev" certificate when it exists, else
 # ad-hoc. Ad-hoc works, but its identity is the bundle's own hash, so every
 # rebuild looks like a different app and macOS drops the Accessibility grant.
 # Run scripts/make-signing-cert.sh once to stop that.
@@ -14,10 +14,10 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 OUT_DIR="${AM_APP_DIR:-build}"
-APP="$OUT_DIR/ActivityMonitor.app"
-BUNDLE_ID="com.topherhunt.activitymonitor"
+APP="$OUT_DIR/Dayline.app"
+BUNDLE_ID="com.topherhunt.dayline"
 VERSION="$(tr -d '[:space:]' < VERSION)"
-CERT="${AM_SIGN_IDENTITY:-Activity Monitor Dev}"
+CERT="${AM_SIGN_IDENTITY:-Dayline Dev}"
 
 if [ "$CERT" = "-" ]; then
   IDENTITY="-"
@@ -45,30 +45,30 @@ if [ "${AM_UNIVERSAL:-0}" = "1" ]; then
   swift build -c release --triple arm64-apple-macosx13.0  --scratch-path .build/arm64
   swift build -c release --triple x86_64-apple-macosx13.0 --scratch-path .build/x86
   mkdir -p .build/universal
-  lipo -create -output .build/universal/ActivityMonitor \
-    .build/arm64/arm64-apple-macosx/release/ActivityMonitor \
-    .build/x86/x86_64-apple-macosx/release/ActivityMonitor
-  BIN=".build/universal/ActivityMonitor"
+  lipo -create -output .build/universal/Dayline \
+    .build/arm64/arm64-apple-macosx/release/Dayline \
+    .build/x86/x86_64-apple-macosx/release/Dayline
+  BIN=".build/universal/Dayline"
 else
   echo "==> swift build"
   swift build -c release
-  BIN=".build/release/ActivityMonitor"
+  BIN=".build/release/Dayline"
 fi
 
 echo "==> assembling $APP (version $VERSION)"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
-cp "$BIN" "$APP/Contents/MacOS/ActivityMonitor"
-cp Sources/ActivityMonitor/Resources/* "$APP/Contents/Resources/"
+cp "$BIN" "$APP/Contents/MacOS/Dayline"
+cp Sources/Dayline/Resources/* "$APP/Contents/Resources/"
 
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <key>CFBundleName</key>              <string>Activity Monitor</string>
-  <key>CFBundleDisplayName</key>       <string>Activity Monitor</string>
-  <key>CFBundleExecutable</key>        <string>ActivityMonitor</string>
+  <key>CFBundleName</key>              <string>Dayline</string>
+  <key>CFBundleDisplayName</key>       <string>Dayline</string>
+  <key>CFBundleExecutable</key>        <string>Dayline</string>
   <key>CFBundleIdentifier</key>        <string>$BUNDLE_ID</string>
   <key>CFBundleIconFile</key>          <string>AppIcon</string>
   <key>CFBundlePackageType</key>       <string>APPL</string>
@@ -77,7 +77,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>LSMinimumSystemVersion</key>    <string>13.0</string>
   <key>LSUIElement</key>               <true/>
   <key>NSAppleEventsUsageDescription</key>
-  <string>Activity Monitor reads the active tab's URL so browser time can be categorized by site.</string>
+  <string>Dayline reads the active tab's URL so browser time can be categorized by site.</string>
 </dict>
 </plist>
 PLIST

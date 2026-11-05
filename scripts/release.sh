@@ -16,7 +16,7 @@ die() { echo "!! $*" >&2; exit 1; }
 VERSION="$(tr -d '[:space:]' < VERSION)"
 echo "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' || die "VERSION is '$VERSION'; it must look like 1.2.3, with no leading v"
 TAG="v$VERSION"
-ZIP="dist/ActivityMonitor-$VERSION.zip"
+ZIP="dist/Dayline-$VERSION.zip"
 
 echo "==> preflight"
 command -v gh >/dev/null       || die "gh is not installed:  brew install gh"
@@ -38,8 +38,8 @@ AM_UNIVERSAL=1 AM_SIGN_IDENTITY="-" AM_APP_DIR=dist bash scripts/build.sh
 
 echo "==> packaging $ZIP"
 rm -f "$ZIP"
-ditto -c -k --keepParent dist/ActivityMonitor.app "$ZIP"
-lipo -info dist/ActivityMonitor.app/Contents/MacOS/ActivityMonitor
+ditto -c -k --keepParent dist/Dayline.app "$ZIP"
+lipo -info dist/Dayline.app/Contents/MacOS/Dayline
 
 cat <<SUMMARY
 
@@ -55,7 +55,7 @@ SUMMARY
 read -r -p "Publish? [y/N] " reply
 [ "$reply" = "y" ] || [ "$reply" = "Y" ] || die "aborted; nothing was published"
 
-gh release create "$TAG" "$ZIP" --target "$COMMIT" --title "Activity Monitor $VERSION" --generate-notes
+gh release create "$TAG" "$ZIP" --target "$COMMIT" --title "Dayline $VERSION" --generate-notes
 git fetch --quiet --tags origin
 
 echo

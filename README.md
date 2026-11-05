@@ -1,4 +1,4 @@
-# Activity Monitor
+# Dayline
 
 A small macOS menu-bar app that records which application and window you are actually looking at, and draws the day as a continuous colour-coded timeline.
 
@@ -26,15 +26,15 @@ Three views, chosen from the top right:
 - **List** -- one row per distinct activity, in the order you first touched it, with start time and total for the day.
 - **Rules** -- the rule and category editors, next to a live table of raw observations so you can build a rule from something the sampler actually saw.
 
-Right-click the menu-bar icon for **Reveal Data Folder** and **Quit**.
+Right-click the menu-bar icon for **Reveal Data Folder** and **Quit**. While the dashboard window is open, Dayline also appears in the Dock and the system menu bar, so Cmd+Q quits it.
 
 ## Installing
 
-Grab the `.zip` from the [latest release](../../releases/latest), unzip it, and drag `ActivityMonitor.app` into `/Applications`.
+Grab the `.zip` from the [latest release](../../releases/latest), unzip it, and drag `Dayline.app` into `/Applications`.
 
 The app is **not notarized by Apple** -- notarization needs a paid Apple Developer account. macOS will therefore refuse to open it on the first try, saying it cannot verify the developer. To get past that:
 
-1. Double-click `ActivityMonitor.app` and let macOS block it. Dismiss the dialog.
+1. Double-click `Dayline.app` and let macOS block it. Dismiss the dialog.
 2. Open **System Settings → Privacy & Security** and scroll down to the Security section.
 3. Click **Open Anyway** next to the line naming the app, and confirm.
 
@@ -43,18 +43,22 @@ That grants an exception for this copy. A version you download later arrives wit
 Then grant permission, or the window titles will all be blank:
 
 1. Open **System Settings → Privacy & Security → Accessibility**.
-2. Enable **Activity Monitor**.
+2. Enable **Dayline**.
 
 The app asks for this on first launch. It needs Accessibility because reading another application's window title is exactly what that permission gates. If you use Safari or a Chromium browser, macOS will separately ask for **Automation** permission the first time it reads a tab URL; declining only means browser rows are categorized by page title instead of URL.
 
 To start it automatically at login, add it under **System Settings → General → Login Items**.
+
+### Upgrading from Activity Monitor
+
+This app used to be called Activity Monitor. Quit and delete the old app before opening Dayline, which moves your existing data and rules into its own folder on first launch. macOS treats Dayline as a new app, so the permission and Login Items steps above need doing again.
 
 ## Your data
 
 Everything stays on your machine. There is no network code in this app, no telemetry, and no account.
 
 ```
-~/Library/Application Support/ActivityMonitor/
+~/Library/Application Support/Dayline/
   activity.sqlite3    every observation, append-only
   rules.json          your categories and rules
   context/            what other apps report they are doing, if any
@@ -65,7 +69,7 @@ Window titles are recorded verbatim, so the database contains the names of docum
 The schema is one table and readable with any SQLite client:
 
 ```sh
-sqlite3 ~/Library/Application\ Support/ActivityMonitor/activity.sqlite3 \
+sqlite3 ~/Library/Application\ Support/Dayline/activity.sqlite3 \
   "SELECT datetime(bucket_start,'unixepoch','localtime'), app_name, title, seconds
    FROM bucket_tally ORDER BY bucket_start DESC LIMIT 20;"
 ```
@@ -75,7 +79,7 @@ sqlite3 ~/Library/Application\ Support/ActivityMonitor/activity.sqlite3 \
 An app whose window title never changes can tell the sampler what the user is doing by writing a JSON file named after its bundle id. There is no socket or server: the file is the whole API.
 
 ```
-~/Library/Application Support/ActivityMonitor/context/dev.herdr.app.json
+~/Library/Application Support/Dayline/context/dev.herdr.app.json
 ```
 
 ```json
@@ -98,7 +102,7 @@ Requires macOS 13 or later and the Xcode **Command Line Tools** (`xcode-select -
 ```sh
 bash scripts/make-signing-cert.sh   # once
 bash scripts/build.sh
-open build/ActivityMonitor.app
+open build/Dayline.app
 ```
 
 The certificate step is worth doing before anything else. macOS pins the Accessibility grant to the app's code signature, and an ad-hoc signature is just a hash of the bundle's contents -- so without a stable certificate, every rebuild looks like a brand new app and you re-approve the permission each time. The script creates a self-signed certificate in your login keychain; no Apple Developer account involved.
@@ -110,7 +114,7 @@ The certificate step is worth doing before anything else. macOS pins the Accessi
 To iterate on the dashboard without rebuilding, point the app at the source directory:
 
 ```sh
-AM_RESOURCES="$PWD/Sources/ActivityMonitor/Resources" ./build/ActivityMonitor.app/Contents/MacOS/ActivityMonitor
+AM_RESOURCES="$PWD/Sources/Dayline/Resources" ./build/Dayline.app/Contents/MacOS/Dayline
 ```
 
 ### Layout
@@ -135,7 +139,7 @@ The version lives in the `VERSION` file, so the repo always records what was las
 bash scripts/release.sh
 ```
 
-This publishes the current `main` commit as GitHub release `v0.2.0` with `ActivityMonitor-0.2.0.zip` attached. It stops with an error if you're not on `main`, if there are uncommitted changes, if `main` doesn't match `origin/main` (push first), or if that version is already released (bump `VERSION`). It then builds a universal (Apple Silicon + Intel) ad-hoc-signed app into `dist/`, zips it, shows a summary, and asks for confirmation. Only then does it create the tag and release on GitHub. Release notes are generated from the commits since the previous release. It never commits or pushes for you.
+This publishes the current `main` commit as GitHub release `v0.2.0` with `Dayline-0.2.0.zip` attached. It stops with an error if you're not on `main`, if there are uncommitted changes, if `main` doesn't match `origin/main` (push first), or if that version is already released (bump `VERSION`). It then builds a universal (Apple Silicon + Intel) ad-hoc-signed app into `dist/`, zips it, shows a summary, and asks for confirmation. Only then does it create the tag and release on GitHub. Release notes are generated from the commits since the previous release. It never commits or pushes for you.
 
 ## Limitations
 

@@ -1,19 +1,16 @@
 import Cocoa
 import WebKit
 
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var statusItem: NSStatusItem!
     private var dashboardWindow: NSWindow!
     private var webView: WKWebView!
     private var store: Store!
     private var sampler: Sampler!
 
-    private let supportDir: URL = {
-        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        let dir = base.appendingPathComponent("ActivityMonitor", isDirectory: true)
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        return dir
-    }()
+    private let supportDir = FileManager.default
+        .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        .appendingPathComponent("Dayline", isDirectory: true)
 
     private var rulesURL: URL { supportDir.appendingPathComponent("rules.json") }
 
@@ -28,10 +25,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         do {
+            try DataFolder.prepare(supportDir)
             store = try Store(path: supportDir.appendingPathComponent("activity.sqlite3").path)
         } catch {
             let alert = NSAlert()
-            alert.messageText = "Could not open the activity database"
+            alert.messageText = "Could not open your activity data"
             alert.informativeText = "\(error)"
             alert.runModal()
             NSApp.terminate(nil)
@@ -43,15 +41,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if !sampler.isTrusted { sampler.requestAccessibility() }
         sampler.start()
 
+        buildMainMenu()
         buildStatusItem()
         buildWindow()
+    }
+
+    /// Shown in the system menu bar only while the window is open.
+    private func buildMainMenu() {
+        let appMenu = NSMenu()
+        appMenu.addItem(withTitle: "Quit Dayline", action: #selector(NSApp.terminate(_:)), keyEquivalent: "q")
+        let appItem = NSMenuItem()
+        appItem.submenu = appMenu
+        let mainMenu = NSMenu()
+        mainMenu.addItem(appItem)
+        NSApp.mainMenu = mainMenu
     }
 
     private func buildStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = statusItem.button {
             button.image = NSImage(systemSymbolName: "chart.bar.xaxis",
-                                   accessibilityDescription: "Activity Monitor")
+                                   accessibilityDescription: "Dayline")
             button.image?.isTemplate = true
             button.target = self
             button.action = #selector(statusItemClicked(_:))
@@ -66,13 +76,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         webView = WKWebView(frame: NSRect(x: 0, y: 0, width: 960, height: 640), configuration: config)
 
-        // No .miniaturizable: an accessory app has no Dock icon, so a minimized
-        // window is awkward to get back to.
+        // No .miniaturizable: the status item is how this window comes back.
         dashboardWindow = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 960, height: 640),
             styleMask: [.titled, .closable, .resizable],
             backing: .buffered, defer: false)
-        dashboardWindow.title = "Activity Monitor"
+        dashboardWindow.title = "Dayline"
+        dashboardWindow.delegate = self
         dashboardWindow.contentView = webView
         dashboardWindow.minSize = NSSize(width: 620, height: 380)
         // Closing must not destroy the window; the status item reopens this one.
@@ -97,7 +107,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let menu = NSMenu()
             menu.addItem(withTitle: "Reveal Data Folder", action: #selector(revealData), keyEquivalent: "")
             menu.addItem(.separator())
-            menu.addItem(withTitle: "Quit Activity Monitor", action: #selector(NSApp.terminate(_:)), keyEquivalent: "q")
+            menu.addItem(withTitle: "Quit Dayline", action: #selector(NSApp.terminate(_:)), keyEquivalent: "q")
             menu.items.forEach { $0.target = $0.action == #selector(revealData) ? self : NSApp }
             statusItem.menu = menu
             statusItem.button?.performClick(nil)
@@ -115,13 +125,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let index = resourceDir.appendingPathComponent("dashboard.html")
         webView.loadFileURL(index, allowingReadAccessTo: resourceDir)
         positionTopRight(near: sender)
-        // An accessory app is never the active app, so ordering the window front
-        // is not enough to give it keyboard focus.
-        NSApp.activate(ignoringOtherApps: true)
+        // Accessory apps get no system menu bar, so Cmd+Q needs .regular, which
+        // also adds a Dock icon. windowWillClose reverts it.
+        NSApp.setActivationPolicy(.regular)
         dashboardWindow.makeKeyAndOrderFront(nil)
         // makeKeyAndOrderFront only raises within the active app, and macOS may
         // decline to activate us at all; this raises above the app that kept focus.
         dashboardWindow.orderFrontRegardless()
+        activateUntilActive(attemptsLeft: 40)
+    }
+
+    /// Activation right after a policy change is silently dropped for an
+    /// unpredictable while, and without it Cmd+Q reaches the app that kept focus.
+    private func activateUntilActive(attemptsLeft: Int) {
+        guard !NSApp.isActive, dashboardWindow.isVisible else { return }
+        guard attemptsLeft > 0 else {
+            NSLog("Gave up activating; macOS kept focus on another app")
+            return
+        }
+        NSApp.activate(ignoringOtherApps: true)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+            self?.activateUntilActive(attemptsLeft: attemptsLeft - 1)
+        }
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        NSApp.setActivationPolicy(.accessory)
     }
 
     @objc private func revealData() {

@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-@testable import ActivityMonitor
+@testable import Dayline
 
 /// Each test gets its own directory of real files; the mtime logic is the point.
 struct ContextFilesTests {

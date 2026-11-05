@@ -1,4 +1,4 @@
-// Draws the app icon and writes Sources/ActivityMonitor/Resources/AppIcon.icns.
+// Draws the app icon and writes Sources/Dayline/Resources/AppIcon.icns.
 // Run with:  swift scripts/make-icon.swift
 //
 // The shape is the menu-bar symbol (SF Symbols "chart.bar.xaxis"): four bars on
@@ -101,7 +101,7 @@ for (points, scale) in [(16, 1), (16, 2), (32, 1), (32, 2), (128, 1), (128, 2),
         .write(to: iconset.appendingPathComponent(name))
 }
 
-let out = root.appendingPathComponent("Sources/ActivityMonitor/Resources/AppIcon.icns")
+let out = root.appendingPathComponent("Sources/Dayline/Resources/AppIcon.icns")
 let task = Process()
 task.executableURL = URL(fileURLWithPath: "/usr/bin/iconutil")
 task.arguments = ["-c", "icns", iconset.path, "-o", out.path]
