@@ -10,7 +10,30 @@
 <header class="bar">
   <div class="row gap">
     <button id="prevDay" class="btn icon" title="Previous day">&#8249;</button>
-    <span id="dayLabel" class="day-label">--</span>
+    <div class="cal-anchor">
+      <button id="dayLabel" class="btn day-label qa-day-label" title="Pick a date">--</button>
+      <div id="cal" class="cal qa-cal" hidden>
+        <div class="row between">
+          <button id="calPrev" class="btn icon qa-cal-prev" title="Previous month">&#8249;</button>
+          <span id="calMonth" class="cal-title qa-cal-month"></span>
+          <button id="calNext" class="btn icon qa-cal-next" title="Next month">&#8250;</button>
+        </div>
+        <div id="calGrid" class="cal-grid"></div>
+        <div class="row between hint">
+          <span class="row gap"><i class="cal-key heat-0"></i>No data</span>
+          <span class="row gap">
+            <span class="row">
+              <i class="cal-key heat-1" title="Under 3h"></i>
+              <i class="cal-key heat-2" title="3 to 6h"></i>
+              <i class="cal-key heat-3" title="6 to 9h"></i>
+              <i class="cal-key heat-4" title="9 to 12h"></i>
+              <i class="cal-key heat-5" title="12h or more"></i>
+            </span>
+            0 to 12h+
+          </span>
+        </div>
+      </div>
+    </div>
     <button id="nextDay" class="btn icon" title="Next day">&#8250;</button>
     <button id="todayBtn" class="btn">Today</button>
   </div>
@@ -103,6 +126,7 @@
 </footer>
 
 <div id="tip" class="tip" hidden></div>
+<script src="calendar.js"></script>
 <script src="dashboard.js"></script>
 </body>
 </html>

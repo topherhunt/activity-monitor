@@ -70,6 +70,37 @@ main { flex: 1; overflow-y: auto; padding: 12px 14px 16px; }
 .seg .btn:last-child { border-radius: 0 var(--radius) var(--radius) 0; }
 .seg-btn.is-on { background: var(--accent); border-color: var(--accent); color: #fff; }
 
+/* ---------- day picker ---------- */
+.cal-anchor { position: relative; }
+.cal {
+  position: absolute; top: calc(100% + 6px); left: 0; z-index: 20; width: 252px;
+  display: grid; gap: 8px; padding: 10px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+  box-shadow: 0 4px 14px rgba(0,0,0,.18);
+}
+.cal-title { font-weight: 600; }
+.cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; text-align: center; }
+.cal-day {
+  height: 28px; padding: 0; border: 2px solid transparent; border-radius: 4px;
+  font: inherit; font-size: 11px; cursor: pointer;
+}
+.cal-day:hover:not(:disabled) { border-color: var(--ink); }
+.cal-day:disabled { opacity: .35; cursor: default; }
+.cal-day.is-today { font-weight: 700; text-decoration: underline; }
+/* Ink, not accent: accent is a blue the ramp also uses. Positioned so the outline
+   paints over the neighbouring cell. */
+.cal-day.is-selected { position: relative; outline: 2px solid var(--ink); outline-offset: 1px; }
+.cal-key { width: 12px; height: 12px; border-radius: 2px; }
+
+/* Fixed in both themes: no data is dark, so shades only read as "more" going
+   brighter. Ink flips where it passes contrast against the shade. */
+.heat-0 { background: #2e323b; color: #fff; }
+.heat-1 { background: #234a80; color: #fff; }
+.heat-2 { background: #2b62ad; color: #fff; }
+.heat-3 { background: #4a8ae0; color: #10151c; }
+.heat-4 { background: #86b6f0; color: #10151c; }
+.heat-5 { background: #c6def9; color: #10151c; }
+
 /* ---------- timeline ---------- */
 .tl-scroll {
   overflow-x: auto; overflow-y: hidden;

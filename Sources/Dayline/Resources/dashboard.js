@@ -25,6 +25,7 @@ const state = {
   minuteAct: null,      // Map of minute -> activity index, built lazily for hover
   group: 'day',         // list view: one group for the day, or one per hour
   bucketSeconds: 3600,
+  cal: null,            // { year, month } while the day picker is open
   zoom: 1,              // 1 = MIN_PITCH per minute
   zoomMin: 1,           // the zoom at which the whole span fits, set by renderChart
   selected: null,       // bucket start when drilled in, else null
@@ -76,6 +77,80 @@ async function loadDay() {
   const sc = $('#tlScroll');
   sc.scrollLeft = sc.scrollWidth;
   renderBreakdown();
+}
+
+/// The label is set here because the Rules view's reload doesn't set it.
+function goToDay(epoch) {
+  state.day = epoch;
+  $('#dayLabel').textContent = dayName(epoch);
+  refresh();
+}
+
+function shiftDay(delta) {
+  const d = new Date(state.day * 1000);
+  goToDay(epochOf(d.getFullYear(), d.getMonth(), d.getDate() + delta));
+}
+
+const today = () => {
+  const d = new Date();
+  return epochOf(d.getFullYear(), d.getMonth(), d.getDate());
+};
+
+// ---------- day picker ----------
+
+function openPicker() {
+  const d = new Date(state.day * 1000);
+  state.cal = { year: d.getFullYear(), month: d.getMonth() };
+  $('#cal').hidden = false;
+  renderPicker();
+}
+
+function closePicker() {
+  state.cal = null;
+  $('#cal').hidden = true;
+}
+
+function shiftMonth(delta) {
+  const d = new Date(state.cal.year, state.cal.month + delta, 1);
+  state.cal = { year: d.getFullYear(), month: d.getMonth() };
+  renderPicker();
+}
+
+function pickerCell(year, month, day, seconds) {
+  const epoch = epochOf(year, month, day);
+  const classes = ['cal-day', 'qa-cal-day', `heat-${heatLevel(seconds)}`];
+  if (epoch === state.day) classes.push('is-selected');
+  if (epoch === today()) classes.push('is-today');
+  const b = el('button', {
+    className: classes.join(' '),
+    textContent: day,
+    disabled: epoch > today(),
+    title: `${dayName(epoch)}: ${seconds ? hms(seconds) : 'nothing tracked'}`,
+  });
+  b.addEventListener('click', () => { closePicker(); goToDay(epoch); });
+  return b;
+}
+
+async function renderPicker() {
+  const { year, month } = state.cal;
+  const res = await call('getMonth', { from: epochOf(year, month, 1), to: epochOf(year, month + 1, 1) });
+  // Stepping through months quickly can resolve these out of order.
+  if (!state.cal || state.cal.year !== year || state.cal.month !== month) return;
+
+  $('#calMonth').textContent = new Date(year, month, 1)
+    .toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+  $('#calNext').disabled = epochOf(year, month + 1, 1) > today();
+
+  const grid = $('#calGrid');
+  if (res.error) {
+    grid.replaceChildren(el('div', { className: 'empty', textContent: res.error }));
+    return;
+  }
+  grid.replaceChildren(
+    ...['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d) => el('span', { className: 'hint', textContent: d })),
+    ...monthCells(year, month).map((day) => (day === null
+      ? el('span')
+      : pickerCell(year, month, day, res.days[dayKey(year, month, day)] || 0))));
 }
 
 // ---------- list view ----------
@@ -581,9 +656,19 @@ $('#saveRules').addEventListener('click', async () => {
   }
 });
 
-$('#prevDay').addEventListener('click', () => { state.day -= 86400; refresh(); });
-$('#nextDay').addEventListener('click', () => { state.day += 86400; refresh(); });
-$('#todayBtn').addEventListener('click', () => { state.day = null; refresh(); });
+$('#prevDay').addEventListener('click', () => shiftDay(-1));
+$('#nextDay').addEventListener('click', () => shiftDay(1));
+$('#todayBtn').addEventListener('click', () => goToDay(today()));
+
+$('#dayLabel').addEventListener('click', () => { if (state.cal) closePicker(); else openPicker(); });
+$('#calPrev').addEventListener('click', () => shiftMonth(-1));
+$('#calNext').addEventListener('click', () => shiftMonth(1));
+document.addEventListener('click', (e) => {
+  if (state.cal && !e.target.closest('.cal-anchor')) closePicker();
+});
+document.addEventListener('keydown', (e) => {
+  if (state.cal && e.key === 'Escape') closePicker();
+});
 
 /// Holds the right-hand edge of the viewport fixed in time. At the default
 /// scroll position that edge is the newest bucket, so zooming in moves toward
@@ -635,7 +720,7 @@ $('#tabs').addEventListener('click', async (e) => {
   showView(b.dataset.tab);
   if (b.dataset.tab === 'timeline') {
     // Column widths are only measurable once the section is visible.
-    if (!state.data) await loadDay(); else renderChart();
+    if (state.data?.dayStart === state.day) renderChart(); else await loadDay();
   } else {
     await refresh();
   }

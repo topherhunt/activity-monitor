@@ -165,6 +165,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         case "getRange":   return json(getRange(args))
         case "getList":    return json(getList(args))
         case "getRaw":     return json(getRaw(args))
+        case "getMonth":   return json(getMonth(args))
         case "getRules":   return jsonRules()
         case "setRules":   return setRules(args)
         case "status":     return json([
@@ -330,6 +331,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         summarize(rows: rows, engine: engine, minSeconds: Self.minReportedSeconds)
             .forEach { out[$0.key] = $0.value }
         return out
+    }
+
+    /// Tracked seconds per day, for shading the day picker.
+    private func getMonth(_ args: [String: Any]) -> [String: Any] {
+        guard let from = args["from"] as? Int, let to = args["to"] as? Int else {
+            return ["error": "getMonth needs from and to"]
+        }
+        do {
+            return ["days": try store.activeSecondsByDay(from: from, to: to)]
+        } catch {
+            return ["error": "\(error)"]
+        }
     }
 
     /// One row per distinct activity label, carrying when that label was first

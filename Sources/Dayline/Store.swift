@@ -175,6 +175,33 @@ final class Store {
         return out
     }
 
+    /// Seconds of real activity per local day, keyed "YYYY-MM-DD", for days that
+    /// have any. Excludes Idle and Locked by raw id, so editing a rule can't change
+    /// it. Sleep needs no filter because a sleeping Mac records nothing.
+    func activeSecondsByDay(from: Int, to: Int) throws -> [String: Int] {
+        let sql = """
+            SELECT date(bucket_start, 'unixepoch', 'localtime'), SUM(seconds)
+            FROM bucket_tally
+            WHERE bucket_start >= ? AND bucket_start < ? AND bundle_id NOT IN (?, ?)
+            GROUP BY 1;
+            """
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
+            throw StoreError.sql(String(cString: sqlite3_errmsg(db)))
+        }
+        defer { sqlite3_finalize(stmt) }
+        sqlite3_bind_int64(stmt, 1, Int64(from))
+        sqlite3_bind_int64(stmt, 2, Int64(to))
+        sqlite3_bind_text(stmt, 3, Sampler.idleBundleID, -1, SQLITE_TRANSIENT)
+        sqlite3_bind_text(stmt, 4, Sampler.lockedBundleID, -1, SQLITE_TRANSIENT)
+
+        var out: [String: Int] = [:]
+        while sqlite3_step(stmt) == SQLITE_ROW {
+            out[String(cString: sqlite3_column_text(stmt, 0))] = Int(sqlite3_column_int64(stmt, 1))
+        }
+        return out
+    }
+
     /// Days that have any data, newest first, as epoch-second local midnights.
     func daysWithData() -> [Int] {
         var stmt: OpaquePointer?
