@@ -7,6 +7,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var webView: WKWebView!
     private var store: Store!
     private var sampler: Sampler!
+    private var healthCheck: HealthCheck!
 
     private let supportDir = FileManager.default
         .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -36,8 +37,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             return
         }
 
+        healthCheck = HealthCheck(settingsFile: supportDir.appendingPathComponent("settings.json"))
         sampler = Sampler(store: store, contextFiles: ContextFiles(
-            dir: supportDir.appendingPathComponent("context", isDirectory: true)))
+            dir: supportDir.appendingPathComponent("context", isDirectory: true)),
+            healthCheck: healthCheck)
         if !sampler.isTrusted { sampler.requestAccessibility() }
         sampler.start()
 
@@ -168,6 +171,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         case "getMonth":   return json(getMonth(args))
         case "getRules":   return jsonRules()
         case "setRules":   return setRules(args)
+        case "getHealthCheck": return json(healthCheckStatus())
+        case "setHealthCheck": return setHealthCheck(args)
+        case "openHealthchecks":
+            NSWorkspace.shared.open(URL(string: "https://healthchecks.io/")!)
+            return "{}"
         case "status":     return json([
                                 "trusted": sampler.isTrusted,
                                 "last": sampler.lastObservation,
@@ -198,6 +206,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         do {
             let set = try JSONDecoder().decode(RuleSet.self, from: data)
             RuleStore.save(set, to: rulesURL)
+            return json(["ok": true])
+        } catch {
+            return json(["ok": false, "error": "\(error)"])
+        }
+    }
+
+    private func healthCheckStatus() -> [String: Any] {
+        var out: [String: Any] = ["url": healthCheck.url?.absoluteString ?? ""]
+        if let last = healthCheck.last {
+            out["lastAt"] = Int(last.at.timeIntervalSince1970)
+            out["lastError"] = last.error
+        }
+        return out
+    }
+
+    private func setHealthCheck(_ args: [String: Any]) -> String {
+        guard let url = args["url"] as? String else {
+            return json(["ok": false, "error": "missing url"])
+        }
+        do {
+            try healthCheck.setURL(url)
             return json(["ok": true])
         } catch {
             return json(["ok": false, "error": "\(error)"])

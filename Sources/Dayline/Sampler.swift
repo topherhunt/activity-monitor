@@ -11,6 +11,7 @@ final class Sampler {
 
     private let store: Store
     private let contextFiles: ContextFiles
+    private let healthCheck: HealthCheck
     private let pollInterval: TimeInterval = 2.0
     private let idleThreshold: TimeInterval = 120.0
     /// Cap on seconds credited to one poll, so a sleep/wake gap does not get
@@ -28,9 +29,10 @@ final class Sampler {
 
     private(set) var lastObservation = "starting up"
 
-    init(store: Store, contextFiles: ContextFiles) {
+    init(store: Store, contextFiles: ContextFiles, healthCheck: HealthCheck) {
         self.store = store
         self.contextFiles = contextFiles
+        self.healthCheck = healthCheck
         let dnc = DistributedNotificationCenter.default()
         dnc.addObserver(forName: .init("com.apple.screenIsLocked"), object: nil, queue: .main) { [weak self] _ in
             self?.screenLocked = true
@@ -69,9 +71,10 @@ final class Sampler {
         lastKey = key
 
         let bucket = (Int(now.timeIntervalSince1970) / Store.bucketSeconds) * Store.bucketSeconds
-        store.add(bucketStart: bucket, bundleID: bundleID, appName: appName,
-                  title: title, url: url,
-                  seconds: Int(elapsed.rounded()), switches: isSwitch ? 1 : 0)
+        let recorded = store.add(bucketStart: bucket, bundleID: bundleID, appName: appName,
+                                 title: title, url: url,
+                                 seconds: Int(elapsed.rounded()), switches: isSwitch ? 1 : 0)
+        if recorded { healthCheck.tick() }
 
         lastObservation = title.isEmpty ? appName : "\(appName) — \(title)"
     }

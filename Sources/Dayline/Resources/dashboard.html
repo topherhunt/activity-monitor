@@ -50,6 +50,7 @@
       <button class="btn seg-btn" data-tab="list">List</button>
       <button class="btn seg-btn is-on" data-tab="timeline">Timeline</button>
       <button class="btn seg-btn" data-tab="rules">Rules</button>
+      <button class="btn seg-btn qa-tab-settings" data-tab="settings">Settings</button>
     </div>
   </div>
 </header>
@@ -111,6 +112,24 @@
     <div class="pane">
       <h2>Raw observations <span class="hint">exactly as recorded &#183; click + to seed a rule</span></h2>
       <div id="rawTable" class="tablewrap"></div>
+    </div>
+  </section>
+
+  <section id="view-settings" hidden>
+    <div class="pane">
+      <h2>Health check <span class="hint">optional &#183; get an email if Dayline stops recording</span></h2>
+      <ol class="steps">
+        <li>Go to <a href="#" id="healthLink" class="qa-health-link">healthchecks.io</a> and create a check.</li>
+        <li>Set its Period to 1 hour and its Grace Time to 1 day.</li>
+        <li>Copy its ping URL and paste it here.</li>
+      </ol>
+      <div class="row gap">
+        <input type="text" id="healthUrl" class="code qa-health-url" placeholder="https://hc-ping.com/your-check-id" spellcheck="false">
+        <button id="saveHealth" class="btn primary qa-health-save">Save</button>
+      </div>
+      <div id="healthMsg" class="hint qa-health-msg"></div>
+      <p id="healthStatus" class="hint qa-health-status"></p>
+      <p class="hint">While it records, Dayline pings this URL once an hour, and pings nothing but an empty request. A Mac that stays asleep past the grace time looks the same as a crash, so you may get an alert after a long stretch with the lid closed.</p>
     </div>
   </section>
 </main>

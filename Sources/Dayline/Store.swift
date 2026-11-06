@@ -129,9 +129,11 @@ final class Store {
 
     /// Adds `seconds` to one key. Called once per poll; the upsert makes this
     /// idempotent-safe against crashes, since there is no open segment to flush.
+    /// Returns whether the write landed.
+    @discardableResult
     func add(bucketStart: Int, bundleID: String, appName: String, title: String,
-             url: String, seconds: Int, switches: Int) {
-        guard let stmt = upsertStmt else { return }
+             url: String, seconds: Int, switches: Int) -> Bool {
+        guard let stmt = upsertStmt else { return false }
         sqlite3_reset(stmt)
         sqlite3_clear_bindings(stmt)
         sqlite3_bind_int64(stmt, 1, Int64(bucketStart))
@@ -143,7 +145,9 @@ final class Store {
         sqlite3_bind_int64(stmt, 7, Int64(switches))
         if sqlite3_step(stmt) != SQLITE_DONE {
             FileHandle.standardError.write(Data("tally write failed: \(String(cString: sqlite3_errmsg(db)))\n".utf8))
+            return false
         }
+        return true
     }
 
     func rows(from: Int, to: Int) -> [TallyRow] {

@@ -1,4 +1,5 @@
 import Foundation
+import SQLite3
 import Testing
 @testable import Dayline
 
@@ -21,6 +22,22 @@ struct StoreTests {
         let f = DateFormatter()
         f.dateFormat = "yyyy-MM-dd"
         return f.string(from: Date(timeIntervalSince1970: TimeInterval(epoch)))
+    }
+
+    @Test func addReportsWhetherTheWriteLanded() throws {
+        let path = FileManager.default.temporaryDirectory
+            .appendingPathComponent("\(UUID().uuidString).sqlite3").path
+        let store = try Store(path: path)
+        let write = { store.add(bucketStart: 0, bundleID: "a", appName: "a", title: "", url: "",
+                                seconds: 1, switches: 0) }
+        #expect(write())
+
+        var other: OpaquePointer?
+        #expect(sqlite3_open(path, &other) == SQLITE_OK)
+        defer { sqlite3_close(other) }
+        let trigger = "CREATE TRIGGER refuse BEFORE UPDATE ON bucket_tally BEGIN SELECT RAISE(ABORT, 'no'); END;"
+        #expect(sqlite3_exec(other, trigger, nil, nil, nil) == SQLITE_OK)
+        #expect(!write())
     }
 
     @Test func sumsEveryAppInADay() throws {

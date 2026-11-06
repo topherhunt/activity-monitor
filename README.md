@@ -22,7 +22,7 @@ The first matching rule wins. Because rules are applied when data is read rather
 
 Click the date in the top bar to open a calendar and jump to any past day. Days are shaded by hours tracked, excluding Idle and Locked: dark gray means nothing was tracked, and shades of blue get brighter in 3-hour bands up to 12h or more.
 
-Three views, chosen from the top right:
+Three views, chosen from the top right next to **Settings**:
 
 - **Timeline** -- one slice per minute, coloured by category and stamped with the application's icon. Each minute shows whichever activity owned most of it, which throws away tab-flipping noise. Hover for the time, application, activity and category; drag across the strip to select a time range, which narrows the panels below to it. Click the strip to clear the selection.
 - **List** -- one row per distinct activity, in the order you first touched it, with start time and total for the day.
@@ -57,12 +57,13 @@ This app used to be called Activity Monitor. Quit and delete the old app before 
 
 ## Your data
 
-Everything stays on your machine. There is no network code in this app, no telemetry, and no account.
+Everything stays on your machine. There is no telemetry and no account, and the only network request the app can make is the optional, empty [health check](#getting-an-email-if-dayline-stops) ping.
 
 ```
 ~/Library/Application Support/Dayline/
   activity.sqlite3    every observation, append-only
   rules.json          your categories and rules
+  settings.json       your health check URL, if you set one
   context/            what other apps report they are doing, if any
 ```
 
@@ -75,6 +76,17 @@ sqlite3 ~/Library/Application\ Support/Dayline/activity.sqlite3 \
   "SELECT datetime(bucket_start,'unixepoch','localtime'), app_name, title, seconds
    FROM bucket_tally ORDER BY bucket_start DESC LIMIT 20;"
 ```
+
+## Getting an email if Dayline stops
+
+The sampler only records while the app runs, so a crash silently costs you every day until you notice. To hear about it sooner:
+
+1. At [healthchecks.io](https://healthchecks.io/), create a check with a **Period** of 1 hour and a **Grace Time** of 1 day.
+2. Copy its ping URL into the **Settings** tab and save.
+
+Dayline pings on the next sample, which is how the tab can show straight away whether the URL works, then hourly while samples are being written to disk. A failed ping retries after 5 minutes. healthchecks.io emails you if about 25 hours pass without one.
+
+Any https URL works, as long as a request to it counts as a check-in. The ping is an empty POST, but the monitor does see your IP address. Sleep stops the pings too, so a Mac left asleep for more than a day sends a false alarm that clears when it wakes.
 
 ## Reporting context from your app
 
@@ -125,6 +137,7 @@ AM_RESOURCES="$PWD/Sources/Dayline/Resources" ./build/Dayline.app/Contents/MacOS
 | --- | --- |
 | `Sampler.swift` | Polling, idle and lock detection, Accessibility and browser URL reads |
 | `ContextFiles.swift` | Reads the context files apps write about themselves |
+| `HealthCheck.swift` | The optional hourly ping and its setting |
 | `Store.swift` | SQLite tally, schema migrations |
 | `Rules.swift` | Rule matching and the shipped defaults |
 | `AppDelegate.swift` | Status item, window, and the read-time aggregation the dashboard asks for |

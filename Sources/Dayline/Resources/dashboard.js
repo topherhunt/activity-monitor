@@ -681,6 +681,39 @@ $('#saveRules').addEventListener('click', async () => {
   }
 });
 
+// ---------- settings ----------
+
+function renderHealth(h) {
+  $('#healthStatus').textContent =
+    h.lastError ? `Problem at ${clock(h.lastAt)}: ${h.lastError}`
+    : h.lastAt ? `Last ping succeeded at ${clock(h.lastAt)}`
+    : h.url ? 'Sending the first ping...'
+    : 'Off';
+}
+
+async function loadHealth() {
+  const h = await call('getHealthCheck');
+  $('#healthUrl').value = h.url;
+  $('#healthMsg').textContent = '';
+  renderHealth(h);
+}
+
+$('#healthLink').addEventListener('click', (e) => {
+  e.preventDefault();   // following a link would replace the dashboard itself
+  call('openHealthchecks');
+});
+
+$('#saveHealth').addEventListener('click', async () => {
+  const res = await call('setHealthCheck', { url: $('#healthUrl').value });
+  if (res.ok) await loadHealth();
+  else $('#healthMsg').textContent = `Error: ${res.error}`;
+});
+
+// Pings happen in the background, so the outcome of a save arrives after it.
+setInterval(async () => {
+  if (state.view === 'settings') renderHealth(await call('getHealthCheck'));
+}, 2000);
+
 $('#prevDay').addEventListener('click', () => shiftDay(-1));
 $('#nextDay').addEventListener('click', () => shiftDay(1));
 $('#todayBtn').addEventListener('click', () => goToDay(today()));
@@ -722,7 +755,7 @@ $('#groupSel').addEventListener('click', (e) => {
 
 function showView(name) {
   state.view = name;
-  for (const v of ['list', 'timeline', 'rules']) $(`#view-${v}`).hidden = v !== name;
+  for (const v of ['list', 'timeline', 'rules', 'settings']) $(`#view-${v}`).hidden = v !== name;
   [...$('#tabs').children].forEach((c) => c.classList.toggle('is-on', c.dataset.tab === name));
   $('#groupSel').hidden = name !== 'list';
   $('#zoomSel').hidden = name !== 'timeline';
@@ -735,6 +768,8 @@ $('#tabs').addEventListener('click', async (e) => {
   if (b.dataset.tab === 'timeline') {
     // Column widths are only measurable once the section is visible.
     if (state.data?.dayStart === state.day) renderChart(); else await loadDay();
+  } else if (b.dataset.tab === 'settings') {
+    await loadHealth();
   } else {
     await refresh();
   }
